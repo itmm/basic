@@ -1,4 +1,6 @@
+#include <cassert>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 enum tokens : char {
@@ -6,6 +8,7 @@ enum tokens : char {
 	t_colon = ':'
 };
 
+std::ostream* out { &std::cout };
 std::string line;
 std::string::const_iterator cur;
 std::string::const_iterator end;
@@ -54,7 +57,7 @@ void do_print() {
 			case t_string: {
 				++cur;
 				while (cur != end && *cur != t_string) {
-					std::cout << *cur; ++cur;
+					*out << *cur; ++cur;
 				}
 				if (cur != end) { ++cur; }
 				break;
@@ -62,7 +65,7 @@ void do_print() {
 			default: err = "can't print"; cur = end; return;
 		}
 	}
-	std::cout << "\n";
+	*out << "\n";
 }
 
 static inline void interpret() {
@@ -70,7 +73,7 @@ static inline void interpret() {
 		switch (*cur) {
 			case t_print: ++cur; do_print(); break;
 			case t_colon: break;
-			default: err = "?? syntax error"; cur = end;
+			default: err = "syntax error"; cur = end;
 		}
 		if (cur == end) { break; }
 		if (*cur != t_colon) { err = "':' expected"; cur = end; break; }
@@ -78,22 +81,59 @@ static inline void interpret() {
 	}
 }
 
+void run_direct(const std::string& source) {
+	err = std::string { };
+	line = source; cur = line.begin(); end = line.end();
+	line = tokenize();
+	if (err.empty()) {
+		cur = line.begin(); end = line.end();
+		interpret();
+	}
+}
+
+void test_tokenizer(const std::string& source, const std::string& expected) {
+	err = std::string { };
+	line = source; cur = line.begin(); end = line.end();
+	std::string got { tokenize() };
+	assert(err.empty());
+	assert(got == expected);
+}
+
+static inline void tokenizer_tests() {
+	test_tokenizer("", "");
+	test_tokenizer("printprint", "??");
+	test_tokenizer("\"ab", "\"ab\"");
+	test_tokenizer("\"\"", "\"\"");
+	test_tokenizer("\"", "\"\"");
+}
+
+void run_test(const std::string& source, const std::string& expected) {
+	std::ostringstream oss;
+	out = &oss;
+	run_direct(source);
+	assert(err.empty());
+	assert(oss.str() == expected);
+}
+
+static inline void run_tests() {
+	tokenizer_tests();
+	run_test("print", "\n");
+	run_test("print \"abc\"", "abc\n");
+	run_test("print \"abc\" \"def\"", "abcdef\n");
+	run_test("print \"a\": print\"b\"::", "a\nb\n");
+	run_test("", "");
+	run_test(":::", "");
+}
+
 int main() {
-	std::string line;
+	run_tests();
+	out = &std::cout;
 	while (std::getline(std::cin, line)) {
 		cur = line.begin(); end = line.end();
 		if (is_direct_mode()) {
-			err = std::string { };
-			line = tokenize();
-			if (! err.empty()) {
-				std::cerr << "??? " << err << "\n"; continue;
-			}
-			cur = line.begin(); end = line.end();
-			interpret();
-			if (! err.empty()) {
-				std::cerr << "?? " << err << "\n"; continue;
-			}
-			std::cout << "ready.\n";
+			run_direct(line);
+			if (err.empty()) { std::cout << "ready.\n"; continue; }
+			std::cerr << "?? " << err << "\n";
 		} else {
 			
 		}
