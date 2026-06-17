@@ -5,7 +5,7 @@
 
 enum tokens : char {
 	t_print = '?', t_run = 'r', t_num = '0', t_string = '"', t_int = '1',
-	t_colon = ':', t_space = ' '
+	t_colon = ':', t_space = ' ', t_rem = '\'', t_esc = '\\'
 };
 
 std::ostream* out { &std::cout };
@@ -33,6 +33,8 @@ static inline std::string tokenize() {
 			result += t_space; ++cur;
 		} else if (matches("print")) {
 			result += t_print;
+		} else if (matches("rem")) {
+			result += t_rem;
 		} else if (*cur == '"') {
 			result += t_string;
 			++cur;
@@ -44,7 +46,7 @@ static inline std::string tokenize() {
 		} else if (*cur == ':') {
 			result += t_colon; ++cur;
 		} else {
-			err = "unknown line: "; for (; cur != end; ++cur) { err += *cur; }
+			result += t_esc; result += *cur++;
 		}
 	}
 	// std::cout << "tokenize: '" << result << "'\n";
@@ -75,6 +77,7 @@ static inline void interpret() {
 			case t_space: ++cur; continue;
 			case t_print: ++cur; do_print(); break;
 			case t_colon: break;
+			case t_rem: cur = end; break;
 			default: err = "syntax error"; cur = end;
 		}
 		if (cur == end) { break; }
@@ -109,6 +112,7 @@ static inline void tokenizer_tests() {
 	test_tokenizer("\"\"", "\"\"");
 	test_tokenizer("\"", "\"\"");
 	test_tokenizer(": :", ": :");
+	test_tokenizer("rem abc", "' \\a\\b\\c");
 }
 
 void run_test(const std::string& source, const std::string& expected) {
@@ -128,6 +132,7 @@ static inline void run_tests() {
 	run_test("print \"a\": print\"b\"::", "a\nb\n");
 	run_test("", "");
 	run_test(":::", "");
+	run_test("rem abc", "");
 }
 
 int main() {
