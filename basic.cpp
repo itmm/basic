@@ -1,14 +1,18 @@
 #include <cassert>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 
 enum tokens : char {
-	t_print = '?', t_run = 'r', t_num = '0', t_string = '"', t_int = '1',
+	t_print = '?', t_run = 'r', t_string = '"',
 	t_colon = ':', t_space = ' ', t_rem = '\'', t_esc = '\\'
 };
 
+std::map<int, std::string> src;
+
 std::ostream* out { &std::cout };
+std::istream* in { &std::cin };
 std::string line;
 std::string::const_iterator cur;
 std::string::const_iterator end;
@@ -16,6 +20,17 @@ std::string err;
 
 static inline bool is_direct_mode() {
 	return cur == end || !isdigit(*cur);
+}
+
+static void test_direct_mode(const std::string& source, bool expected) {
+	line = source; cur = line.begin(); end = line.end();
+	assert(is_direct_mode() == expected);
+}
+
+static inline void is_direct_mode_tests() {
+	test_direct_mode("", true);
+	test_direct_mode("print", true);
+	test_direct_mode("10 print", false);
 }
 
 bool matches(const std::string& kw) {
@@ -35,6 +50,8 @@ static inline std::string tokenize() {
 			result += t_print;
 		} else if (matches("rem")) {
 			result += t_rem;
+		} else if (matches("run")) {
+			result += t_run;
 		} else if (*cur == '"') {
 			result += t_string;
 			++cur;
@@ -45,6 +62,8 @@ static inline std::string tokenize() {
 			if (cur != end) { ++cur; }
 		} else if (*cur == ':') {
 			result += t_colon; ++cur;
+		} else if (isdigit(*cur)) {
+			result += *cur++;
 		} else {
 			result += t_esc; result += *cur++;
 		}
@@ -71,14 +90,24 @@ void do_print() {
 	*out << "\n";
 }
 
-static inline void interpret() {
+static void interpret();
+
+void do_run() {
+	for (const auto& l : src) {
+		line = l.second; cur = line.begin(); end = line.end();
+		interpret();
+	}
+}
+
+static void interpret() {
 	while (cur != end) {
 		switch (*cur) {
 			case t_space: ++cur; continue;
 			case t_print: ++cur; do_print(); break;
 			case t_colon: break;
 			case t_rem: cur = end; break;
-			default: err = "syntax error"; cur = end;
+			case t_run: ++cur; do_run(); cur = end; break;
+			default: err = "syntax error: " + line; cur = end;
 		}
 		if (cur == end) { break; }
 		if (*cur != t_colon) { err = "':' expected"; cur = end; break; }
@@ -93,6 +122,29 @@ void run_direct(const std::string& source) {
 	if (err.empty()) {
 		cur = line.begin(); end = line.end();
 		interpret();
+	}
+}
+
+void run() {
+	err = std::string { };
+	for (;;) {
+		if (!err.empty() || !std::getline(*in, line)) { break; }
+		cur = line.begin(); end = line.end();
+		if (is_direct_mode()) {
+			run_direct(line);
+		} else {
+			int num = 0;
+			while (cur != end && isdigit(*cur)) {
+				num = num * 10 + *cur++ - '0';
+			}
+			while (cur != end && *cur <= ' ') { ++cur; }
+			src[num] = tokenize();
+		}
+	}
+	if (err.empty()) {
+		*out << "ready.\n";
+	} else {
+		std::cerr << "?? " << err << "\n";
 	}
 }
 
@@ -113,18 +165,21 @@ static inline void tokenizer_tests() {
 	test_tokenizer("\"", "\"\"");
 	test_tokenizer(": :", ": :");
 	test_tokenizer("rem abc", "' \\a\\b\\c");
+	test_tokenizer("run", "r");
 }
 
 void run_test(const std::string& source, const std::string& expected) {
 	std::ostringstream oss;
 	out = &oss;
-	run_direct(source);
-	if (! err.empty()) { std::cerr << "ERR: '" << err << "'\n"; }
+	std::istringstream iss { source };
+	in = &iss;
+	run();
 	assert(err.empty());
-	assert(oss.str() == expected);
+	assert(oss.str() == expected + "ready.\n");
 }
 
 static inline void run_tests() {
+	is_direct_mode_tests();
 	tokenizer_tests();
 	run_test("print", "\n");
 	run_test("print \"abc\"", "abc\n");
@@ -133,19 +188,12 @@ static inline void run_tests() {
 	run_test("", "");
 	run_test(":::", "");
 	run_test("rem abc", "");
+	run_test("10 print \"a\"\nrun", "a\n");
 }
 
 int main() {
 	run_tests();
 	out = &std::cout;
-	while (std::getline(std::cin, line)) {
-		cur = line.begin(); end = line.end();
-		if (is_direct_mode()) {
-			run_direct(line);
-			if (err.empty()) { std::cout << "ready.\n"; continue; }
-			std::cerr << "?? " << err << "\n";
-		} else {
-			
-		}
-	}
+	in = &std::cin;
+	run();
 }
