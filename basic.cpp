@@ -7,7 +7,7 @@
 enum tokens : char {
 	t_print = '?', t_run = 'r', t_string = '"',
 	t_colon = ':', t_space = ' ', t_rem = '\'', t_esc = '\\',
-	t_lbracket = '(', t_rbracket = ')'
+	t_lbracket = '(', t_rbracket = ')', t_plus = '+'
 };
 
 std::map<int, std::string> src;
@@ -67,6 +67,8 @@ static inline std::string tokenize() {
 			result += t_lbracket; ++cur;
 		} else if (*cur == ')') {
 			result += t_rbracket; ++cur;
+		} else if (*cur == '+') {
+			result += t_plus; ++cur;
 		} else if (isdigit(*cur)) {
 			result += *cur++;
 		} else {
@@ -116,6 +118,21 @@ static void do_term() {
 
 static void do_expression() {
 	do_term();
+	if (! err.empty()) { return; }
+	for (;;) {
+		while (cur != end && *cur == t_space) { ++cur; }
+		switch (*cur) {
+			case t_plus: {
+				std::string first = value;
+				++cur;
+				do_term();
+				if (! err.empty()) { return; }
+				value = first + value;
+				break;
+			}
+			default: return;
+		}
+	}
 }
 
 void do_print() {
@@ -227,6 +244,7 @@ static inline void run_tests() {
 	run_test("rem abc", "");
 	run_test("10 print \"a\"\nrun", "a\n");
 	run_test("print (\"abc\")", "abc\n");
+	run_test("print \"a\" + \"b\" + \"c\"", "abc\n");
 }
 
 int main() {
