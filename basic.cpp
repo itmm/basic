@@ -6,7 +6,8 @@
 
 enum tokens : char {
 	t_print = '?', t_run = 'r', t_string = '"',
-	t_colon = ':', t_space = ' ', t_rem = '\'', t_esc = '\\'
+	t_colon = ':', t_space = ' ', t_rem = '\'', t_esc = '\\',
+	t_lbracket = '(', t_rbracket = ')'
 };
 
 std::map<int, std::string> src;
@@ -62,6 +63,10 @@ static inline std::string tokenize() {
 			if (cur != end) { ++cur; }
 		} else if (*cur == ':') {
 			result += t_colon; ++cur;
+		} else if (*cur == '(') {
+			result += t_lbracket; ++cur;
+		} else if (*cur == ')') {
+			result += t_rbracket; ++cur;
 		} else if (isdigit(*cur)) {
 			result += *cur++;
 		} else {
@@ -72,20 +77,52 @@ static inline std::string tokenize() {
 	return result;
 }
 
+static std::string value;
+
+static void do_expression();
+
+static void do_factor() {
+	while (cur != end && *cur == t_space) { ++cur; }
+	if (cur == end || *cur == t_colon) { 
+		err = "no expression"; cur = end; return;
+	}
+	switch (*cur) {
+		case t_string: {
+			value = std::string { };
+			++cur;
+			while (cur != end && *cur != t_string) {
+				value += *cur++;
+			}
+			if (cur != end) { ++cur; }
+			break;
+		}
+		case t_lbracket: {
+			++cur;
+			do_expression();
+			if (cur != end && *cur == t_rbracket) {
+				++cur;
+			} else {
+				err = "unmatched bracket"; cur = end; return;
+			}
+			break;
+		}
+		default: err = "no expression"; cur = end; return;
+	}
+}
+
+static void do_term() {
+	do_factor();
+}
+
+static void do_expression() {
+	do_term();
+}
+
 void do_print() {
 	while (cur != end && *cur != t_colon) {
-		switch (*cur) {
-			case t_space: ++cur; break;
-			case t_string: {
-				++cur;
-				while (cur != end && *cur != t_string) {
-					*out << *cur; ++cur;
-				}
-				if (cur != end) { ++cur; }
-				break;
-			}
-			default: err = "can't print"; cur = end; return;
-		}
+		do_expression();
+		if (! err.empty()) { return; }
+		*out << value;
 	}
 	*out << "\n";
 }
@@ -189,6 +226,7 @@ static inline void run_tests() {
 	run_test(":::", "");
 	run_test("rem abc", "");
 	run_test("10 print \"a\"\nrun", "a\n");
+	run_test("print (\"abc\")", "abc\n");
 }
 
 int main() {
