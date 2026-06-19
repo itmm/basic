@@ -3,11 +3,12 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <variant>
 
 enum tokens : char {
-	t_print = '?', t_run = 'r', t_string = '"',
-	t_colon = ':', t_space = ' ', t_rem = '\'', t_esc = '\\',
-	t_lbracket = '(', t_rbracket = ')', t_plus = '+'
+	t_print = '?', t_run = 'r', t_string = '"', t_colon = ':', t_space = ' ',
+	t_rem = '\'', t_esc = '\\', t_lbracket = '(', t_rbracket = ')',
+	t_plus = '+', t_num = '#'
 };
 
 std::map<int, std::string> src;
@@ -70,7 +71,10 @@ static inline std::string tokenize() {
 		} else if (*cur == '+') {
 			result += t_plus; ++cur;
 		} else if (isdigit(*cur)) {
-			result += *cur++;
+			result += t_num;
+			while (cur != end && (isdigit(*cur) || *cur == '.')) {
+				result += *cur++;
+			}
 		} else {
 			result += t_esc; result += *cur++;
 		}
@@ -79,7 +83,9 @@ static inline std::string tokenize() {
 	return result;
 }
 
-static std::string value;
+using value_t = std::variant<std::string, double, int>;
+
+static value_t value;
 
 static void do_expression();
 
@@ -90,12 +96,32 @@ static void do_factor() {
 	}
 	switch (*cur) {
 		case t_string: {
-			value = std::string { };
+			std::string v;
 			++cur;
 			while (cur != end && *cur != t_string) {
-				value += *cur++;
+				v += *cur++;
 			}
 			if (cur != end) { ++cur; }
+			value = v;
+			break;
+		}
+		case t_num: {
+			std::string v;
+			++cur;
+			bool contains_dot { false };
+			while (cur != end && (isdigit(*cur) || *cur == '.')) {
+				v += *cur;
+				if (*cur == '.') {
+					if (contains_dot) { err = "multiple ."; cur = end; return; }
+					contains_dot = true;
+				}
+				++cur;
+			}
+			if (contains_dot) {
+				value = std::stod(v);
+			} else {
+				value = std::stoi(v);
+			}
 			break;
 		}
 		case t_lbracket: {
@@ -123,11 +149,17 @@ static void do_expression() {
 		while (cur != end && *cur == t_space) { ++cur; }
 		switch (*cur) {
 			case t_plus: {
-				std::string first = value;
+				value_t first = value;
 				++cur;
 				do_term();
 				if (! err.empty()) { return; }
-				value = first + value;
+				if (
+					std::holds_alternative<std::string>(first) && 
+					std::holds_alternative<std::string>(value)
+				) {
+					value = std::get<std::string>(first) +
+						std::get<std::string>(value);
+				} else { err = "wrong datatypes for +"; cur = end; return; }
 				break;
 			}
 			default: return;
@@ -139,7 +171,17 @@ void do_print() {
 	while (cur != end && *cur != t_colon) {
 		do_expression();
 		if (! err.empty()) { return; }
-		*out << value;
+		if (std::holds_alternative<std::string>(value)) {
+			*out << std::get<std::string>(value);
+		} else if (std::holds_alternative<int>(value)) {
+			int v { std::get<int>(value) };
+			char sign { v < 0 ? '-' : ' ' };
+			*out << sign << v << ' ';
+		} else if (std::holds_alternative<double>(value)) {
+			double v { std::get<double>(value) };
+			char sign { v < 0 ? '-' : ' ' };
+			*out << sign << v << ' ';
+		} else { err = "can't print datatype"; cur = end; return; }
 	}
 	*out << "\n";
 }
@@ -245,6 +287,7 @@ static inline void run_tests() {
 	run_test("10 print \"a\"\nrun", "a\n");
 	run_test("print (\"abc\")", "abc\n");
 	run_test("print \"a\" + \"b\" + \"c\"", "abc\n");
+	run_test("print 10 20", " 10  20 \n");
 }
 
 int main() {
