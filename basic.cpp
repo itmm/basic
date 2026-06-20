@@ -370,6 +370,7 @@ static inline void run_tests() {
 	run_test("print 4 - 10", "-6 \n");
 	run_test("print 3 * 4", " 12 \n");
 	run_test("print -3/2", "-1.5 \n");
+	run_test("print 3 + 2 * 10", " 23 \n");
 }
 
 int main() {
