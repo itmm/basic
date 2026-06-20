@@ -1,6 +1,6 @@
 .PHONY: all clean
 
-CXXFLAGS += -std=c++20
+CXXFLAGS += -std=c++20 -Wall
 
 all: basic
 	./basic </dev/null

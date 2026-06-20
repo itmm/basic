@@ -8,7 +8,7 @@
 enum tokens : char {
 	t_print = '?', t_run = 'r', t_string = '"', t_colon = ':', t_space = ' ',
 	t_rem = '\'', t_esc = '\\', t_lbracket = '(', t_rbracket = ')',
-	t_plus = '+', t_num = '#'
+	t_plus = '+', t_num = '#', t_minus = '-', t_times = '*', t_div = '/'
 };
 
 std::map<int, std::string> src;
@@ -43,6 +43,11 @@ bool matches(const std::string& kw) {
 	return result;
 }
 
+std::map<char, char> token_mapper {
+	{ ':', t_colon }, { '(', t_lbracket }, { ')', t_rbracket },
+	{ '+', t_plus }, { '-', t_minus }, { '*', t_times }, { '/', t_div }
+};
+
 static inline std::string tokenize() {
 	std::string result;
 	while (cur != end) {
@@ -62,21 +67,19 @@ static inline std::string tokenize() {
 			}
 			result += t_string;
 			if (cur != end) { ++cur; }
-		} else if (*cur == ':') {
-			result += t_colon; ++cur;
-		} else if (*cur == '(') {
-			result += t_lbracket; ++cur;
-		} else if (*cur == ')') {
-			result += t_rbracket; ++cur;
-		} else if (*cur == '+') {
-			result += t_plus; ++cur;
 		} else if (isdigit(*cur)) {
 			result += t_num;
 			while (cur != end && (isdigit(*cur) || *cur == '.')) {
 				result += *cur++;
 			}
 		} else {
-			result += t_esc; result += *cur++;
+			auto got { token_mapper.find(*cur) };
+			if (got != token_mapper.end()) {
+				result += got->second;
+			} else {
+				result += t_esc; result += *cur;
+			}
+			++cur;
 		}
 	}
 	// std::cout << "tokenize: '" << result << "'\n";
@@ -89,12 +92,35 @@ static value_t value;
 
 static void do_expression();
 
+static inline bool is_numeric(const value_t& v = value) {
+	return std::holds_alternative<double>(v) ||
+		std::holds_alternative<int>(v);
+}
+
+static inline double get_numeric(const value_t& v = value) {
+	if (std::holds_alternative<double>(v)) {
+		return std::get<double>(v);
+	} else if (std::holds_alternative<int>(v)) {
+		return std::get<int>(v);
+	} else { return 0.0/0.0; }
+}
+
 static void do_factor() {
 	while (cur != end && *cur == t_space) { ++cur; }
 	if (cur == end || *cur == t_colon) { 
 		err = "no expression"; cur = end; return;
 	}
 	switch (*cur) {
+		case t_minus: {
+			++cur;
+			do_factor();
+			if (is_numeric()) {
+				value = - get_numeric();
+			} else {
+				err = "invalid quantity to negate"; cur = end; return;
+			}
+			break;
+		}
 		case t_string: {
 			std::string v;
 			++cur;
@@ -138,8 +164,74 @@ static void do_factor() {
 	}
 }
 
+static void do_mult() {
+	value_t first = value;
+	++cur;
+	do_factor();
+	if (! err.empty()) { return; }
+	if (is_numeric(first) && is_numeric()) {
+		value = get_numeric(first) * get_numeric();
+	} else {
+		err = "wrong datatypes for *"; cur = end; return;
+	}
+}
+
+static void do_div() {
+	value_t first = value;
+	++cur;
+	do_factor();
+	if (! err.empty()) { return; }
+	if (is_numeric(first) && is_numeric()) {
+		value = get_numeric(first) / get_numeric();
+	} else {
+		err = "wrong datatypes for /"; cur = end; return;
+	}
+}
+
 static void do_term() {
 	do_factor();
+	while (cur != end) {
+		switch (*cur) {
+			case t_space: ++cur; break;
+			case '*': do_mult(); break;
+			case '/': do_div(); break;
+			default: return;
+		}
+	}
+}
+
+static inline bool is_string(const value_t& v = value) {
+	return std::holds_alternative<std::string>(v);
+}
+
+static inline const std::string& get_string(const value_t& v = value) {
+	return std::get<std::string>(v);
+}
+
+static void do_plus() {
+	value_t first = value;
+	++cur;
+	do_term();
+	if (! err.empty()) { return; }
+	if (is_string(first) && is_string()) {
+		value = get_string(first) + get_string();
+	} else if (is_numeric(first) && is_numeric()) {
+		value = get_numeric(first) + get_numeric();
+	} else {
+		err = "wrong datatypes for +"; cur = end; return;
+	}
+}
+
+static void do_minus() {
+	value_t first = value;
+	++cur;
+	do_term();
+	if (! err.empty()) { return; }
+	if (is_numeric(first) && is_numeric()) {
+		value = get_numeric(first) - get_numeric();
+	} else {
+		err = "wrong datatypes for -"; cur = end; return;
+	}
 }
 
 static void do_expression() {
@@ -148,20 +240,8 @@ static void do_expression() {
 	for (;;) {
 		while (cur != end && *cur == t_space) { ++cur; }
 		switch (*cur) {
-			case t_plus: {
-				value_t first = value;
-				++cur;
-				do_term();
-				if (! err.empty()) { return; }
-				if (
-					std::holds_alternative<std::string>(first) && 
-					std::holds_alternative<std::string>(value)
-				) {
-					value = std::get<std::string>(first) +
-						std::get<std::string>(value);
-				} else { err = "wrong datatypes for +"; cur = end; return; }
-				break;
-			}
+			case t_plus: do_plus(); break;
+			case t_minus: do_minus(); break;
 			default: return;
 		}
 	}
@@ -171,16 +251,12 @@ void do_print() {
 	while (cur != end && *cur != t_colon) {
 		do_expression();
 		if (! err.empty()) { return; }
-		if (std::holds_alternative<std::string>(value)) {
-			*out << std::get<std::string>(value);
-		} else if (std::holds_alternative<int>(value)) {
-			int v { std::get<int>(value) };
-			char sign { v < 0 ? '-' : ' ' };
-			*out << sign << v << ' ';
-		} else if (std::holds_alternative<double>(value)) {
-			double v { std::get<double>(value) };
-			char sign { v < 0 ? '-' : ' ' };
-			*out << sign << v << ' ';
+		if (is_string()) {
+			*out << get_string();
+		} else if (is_numeric()) {
+			double v { get_numeric() };
+			if (v >= 0) { *out << ' '; }
+			*out << v << ' ';
 		} else { err = "can't print datatype"; cur = end; return; }
 	}
 	*out << "\n";
@@ -288,6 +364,12 @@ static inline void run_tests() {
 	run_test("print (\"abc\")", "abc\n");
 	run_test("print \"a\" + \"b\" + \"c\"", "abc\n");
 	run_test("print 10 20", " 10  20 \n");
+	run_test("print 10.5 20.2", " 10.5  20.2 \n");
+	run_test("print 3 + 5", " 8 \n");
+	run_test("print -3", "-3 \n");
+	run_test("print 4 - 10", "-6 \n");
+	run_test("print 3 * 4", " 12 \n");
+	run_test("print -3/2", "-1.5 \n");
 }
 
 int main() {
