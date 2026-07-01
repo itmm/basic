@@ -1,4 +1,5 @@
 #include <cassert>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -37,7 +38,7 @@ static inline void is_direct_mode_tests() {
 
 bool matches(const std::string& kw) {
 	bool result {
-		end - cur >= kw.size() && std::equal(kw.begin(), kw.end(), cur)
+		end - cur >= (ssize_t) kw.size() && std::equal(kw.begin(), kw.end(), cur)
 	};
 	if (result) { cur += kw.size(); }
 	return result;
