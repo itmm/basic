@@ -2,6 +2,7 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -13,9 +14,6 @@ enum tokens : char {
 static_assert(t_rem < ' ');
 
 std::map<int, std::string> src;
-
-std::map<std::string, double> num_vars;
-std::map<std::string, std::string> str_vars;
 
 std::ostream* out { &std::cout };
 std::istream* in { &std::cin };
@@ -81,6 +79,31 @@ using value_t = std::variant<std::string, double>;
 
 static value_t value;
 
+std::map<std::string, value_t> vars;
+
+struct Array {
+		int size;
+		std::unique_ptr<int[]> dimens;
+		std::unique_ptr<value_t[]> elements;
+
+		static int get_size(const std::vector<int>& ds) {
+			int size = 1;
+			for (int x : ds) { size *= x + 1; }
+			return size;
+		}
+
+		Array(const std::vector<int>& ds): size { (int) ds.size() },
+			dimens { std::make_unique<int[]>(ds.size()) },
+			elements { std::make_unique<value_t[]>(get_size(ds)) }
+		{
+			for (int i { 0 }; i < (int) ds.size(); ++i) {
+				dimens[i] = ds[i];
+			}
+		}
+};
+
+std::map<std::string, Array> arrays;
+
 static void do_expression();
 
 static inline bool is_numeric(const value_t& v = value) {
@@ -97,6 +120,47 @@ static inline bool is_string(const value_t& v = value) {
 
 static inline const std::string& get_string(const value_t& v = value) {
 	return std::get<std::string>(v);
+}
+
+static std::pair<Array&, int> parse_array_expression(const std::string& name) {
+	auto got { arrays.find(name) };
+	if (got == arrays.end()) {
+		std::vector<int> dflt = { 10 };
+		got = arrays.insert({ name, Array(dflt) }).first;
+	}
+	Array& ary { got->second };
+	int off = 0;
+	for (int i = 0; i < ary.size; ++i) {
+		while (cur < end && *cur == ' ') { ++cur; }
+		if (cur >= end) { err = "end of line in array expression"; cur = end; return { ary, -1 }; }
+		if (i == 0 && *cur != '(') { err = "'(' expected"; cur = end; return { ary, -1 }; }
+		if (i > 0 && *cur != ',') { err = "',' expected"; cur = end; return { ary, -1 }; }
+		++cur;
+		do_expression();
+		if (! is_numeric()) { err = "index expected"; cur = end; return { ary, -1 }; }
+		int idx = (int) get_numeric();
+		if (idx < 0 || idx >= ary.dimens[i]) { err = "out of bounds"; cur = end; return { ary, -1 }; }
+		off = off * ary.dimens[i] + idx;
+	}
+	while (cur < end && *cur == ' ') { ++cur; }
+	if (cur >= end || *cur != ')') { err = "')' expected"; cur = end; return { ary, -1 }; }
+	++cur;
+	return { ary, off };
+}
+
+static inline void do_array_lookup(const std::string& name) {
+	auto ary { parse_array_expression(name) };
+	if (ary.second >= 0) { value = ary.first.elements[ary.second]; }
+}
+
+static inline void do_array_assign(const std::string& name) {
+	auto ary { parse_array_expression(name) };
+	if (ary.second < 0) { return; }
+	while (cur < end && *cur == ' ') { ++cur; }
+	if (cur == end || *cur != '=') { err = "'=' expected"; cur = end; return; }
+	++cur;
+	do_expression();
+	ary.first.elements[ary.second] = value;
 }
 
 static void do_factor() {
@@ -153,13 +217,10 @@ static void do_factor() {
 		default:
 			if (isalpha(*cur)) {
 				std::string name; while (cur < end && isalnum(*cur)) { name += *cur++; }
-				bool is_num { true };
-				if (cur < end && *cur == '$') { is_num = false; ++cur; }
-				if (is_num) {
-					value = num_vars[name];
-				} else {
-					value = str_vars[name];
-				}
+				if (cur < end && *cur == '$') { name += *cur++; }
+				if (cur < end && *cur == '(') {
+					do_array_lookup(name);
+				} else { value = vars[name]; }
 				break;
 			}
 			err = "no expression"; cur = end; return;
@@ -262,15 +323,10 @@ void do_run() {
 	}
 }
 
-static void do_assignment(const std::string& name, bool is_num) {
+static void do_assignment(const std::string& name) {
 	++cur;
 	do_expression();
-	if (is_num && is_numeric()) {
-		num_vars[name] = get_numeric(); return;
-	} else if (! is_num && is_string()) {
-		str_vars[name] = get_string(); return;
-	}
-	err = "unknown assignment"; cur = end;
+	vars[name] = value;
 }
 
 static void interpret() {
@@ -285,12 +341,16 @@ static void interpret() {
 				if (isalpha(*cur)) {
 					std::string name;
 					while (cur < end && isalnum(*cur)) { name += *cur++; }
-					bool is_num { true };
-					if (cur < end && *cur == '$') { is_num = false; ++cur; }
-					while (cur < end && *cur == ' ') { ++cur; }
-					if (cur < end && *cur == '=') {
-						do_assignment(name, is_num);
+					if (cur < end && *cur == '$') { name += *cur++; }
+					if (cur < end && *cur == '(') {
+						do_array_assign(name);
 						break;
+					} else {
+						while (cur < end && *cur == ' ') { ++cur; }
+						if (cur < end && *cur == '=') {
+							do_assignment(name);
+							break;
+						}
 					}
 				}
 				err = "syntax error: " + line; cur = end;
@@ -390,6 +450,8 @@ static inline void run_tests() {
 	run_test("print 3 + 2 * 10", " 23 \n");
 	run_test("a = 10:print a + 5", " 15 \n");
 	run_test("a$ = \"abc\":print a$", "abc\n");
+	run_test("print a(3)", "\n");
+	run_test("a(3)=7:print a(3)", " 7 \n");
 }
 
 int main() {
