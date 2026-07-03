@@ -2,8 +2,6 @@
 #include <functional>
 #include <iostream>
 #include <map>
-#include <memory>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -86,100 +84,69 @@ static inline std::string tokenize() {
 	return result;
 }
 
-using value_t = std::variant<std::string, double>;
+using value_t = std::variant<char, std::string, double>;
 
 static value_t value;
 
 std::map<std::string, value_t> vars;
 
-struct Array {
-		int size;
-		std::unique_ptr<int[]> dimens;
-		std::unique_ptr<value_t[]> elements;
-
-		static int get_size(const std::vector<int>& ds) {
-			int size = 1;
-			for (int x : ds) { size *= x + 1; }
-			return size;
-		}
-
-		Array(const std::vector<int>& ds): size { (int) ds.size() },
-			dimens { std::make_unique<int[]>(ds.size()) },
-			elements { std::make_unique<value_t[]>(get_size(ds)) }
-		{
-			for (int i { 0 }; i < (int) ds.size(); ++i) {
-				dimens[i] = ds[i];
-			}
-		}
-};
-
-std::map<std::string, Array> arrays;
-
 static void do_expression();
 
 static inline bool is_numeric(const value_t& v = value) {
-	return std::holds_alternative<double>(v);
+	return ! std::holds_alternative<std::string>(v);
 }
 
 static inline double get_numeric(const value_t& v = value) {
-	return std::get<double>(v);
+	return std::holds_alternative<double>(v) ? std::get<double>(v) : 0.0;
 }
 
 static inline bool is_string(const value_t& v = value) {
-	return std::holds_alternative<std::string>(v);
+	return ! std::holds_alternative<double>(v);
 }
 
-static inline const std::string& get_string(const value_t& v = value) {
-	return std::get<std::string>(v);
+static inline std::string get_string(const value_t& v = value) {
+	return std::holds_alternative<std::string>(v) ? std::get<std::string>(v) : "";
 }
 
 static void eat_space() { while (cur < end && *cur == ' ') { ++cur; } }
 
-static std::optional<std::pair<Array&, int>> parse_array_expression(
-	const std::string& name
-) {
-	auto got { arrays.find(name) };
-	if (got == arrays.end()) {
-		std::vector<int> dflt = { 10 };
-		got = arrays.insert({ name, Array(dflt) }).first;
-	}
-	Array& ary { got->second };
-	int off = 0;
-	for (int i = 0; i < ary.size; ++i) {
+static std::string parse_array_expression(std::string name) {
+	bool first { true };
+	for (;;) {
 		eat_space();
 		if (cur >= end) { ERR("end of line in array expression"); return { }; }
-		if (i == 0 && *cur != '(') { EXP("'('"); return { }; }
-		if (i > 0 && *cur != ',') { EXP("','"); return { }; }
+		if (first && *cur != '(') { EXP("'('"); return { }; }
+		if (! first && *cur != ',') { EXP("','"); return { }; }
 		++cur;
 		do_expression();
 		if (! is_numeric()) { EXP("index"); return { }; }
 		int idx = (int) get_numeric();
-		if (idx < 0 || idx >= ary.dimens[i]) {
-			ERR("out of bounds"); return { };
-		}
-		off = off * ary.dimens[i] + idx;
+		if (idx < 0) { ERR("out of bounds"); return { }; }
+		name += '_' + std::to_string(idx);
+		first = false;
+		eat_space();
+		if (cur >= end || *cur != ',') { break; }
 	}
-	eat_space();
 	if (cur >= end || *cur != ')') { EXP("')'"); return { }; }
 	++cur;
-	return std::pair<Array&, int>(ary, off);
+	return name;
 }
 
 static inline void do_array_lookup(const std::string& name) {
 	auto ary { parse_array_expression(name) };
-	if (ary) {
-		value = ary->first.elements[ary->second];
+	if (! ary.empty()) {
+		value = vars[ary];
 	}
 }
 
 static inline void do_array_assign(const std::string& name) {
 	auto ary { parse_array_expression(name) };
-	if (ary) {
+	if (! ary.empty()) {
 		eat_space();
 		if (cur == end || *cur != '=') { EXP("'='"); return; }
 		++cur;
 		do_expression();
-		ary->first.elements[ary->second] = value;
+		vars[ary] = value;
 	}
 }
 
@@ -244,7 +211,9 @@ static void do_factor() {
 				std::string name { parse_ident() };
 				if (cur < end && *cur == '(') {
 					do_array_lookup(name);
-				} else { value = vars[name]; }
+				} else {
+					value = vars[name];
+				}
 				break;
 			}
 			ERR("no expression"); return;
@@ -392,6 +361,7 @@ void run_direct(const std::string& source) {
 }
 
 void run() {
+	vars.clear();
 	err = std::string { };
 	for (;;) {
 		if (!err.empty() || !std::getline(*in, line)) { break; }
@@ -403,7 +373,7 @@ void run() {
 			while (cur < end && isdigit(*cur)) {
 				num = num * 10 + *cur++ - '0';
 			}
-			while (cur < end && *cur <= ' ') { ++cur; }
+			eat_space();
 			src[num] = tokenize();
 		}
 	}
@@ -471,7 +441,10 @@ static inline void run_tests() {
 	run_test("a = 10:print a + 5", " 15 \n");
 	run_test("a$ = \"abc\":print a$", "abc\n");
 	run_test("print a(3)", "\n");
-	run_test("a(3)=7:print a(3)", " 7 \n");
+	run_test("a(3,2)=7:print a(3 , 2)", " 7 \n");
+	run_test("print a + b", "\n");
+std::cerr << "last test\n";
+	run_test("print a * b", " 0 \n");
 }
 
 int main() {
