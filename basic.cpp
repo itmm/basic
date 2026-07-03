@@ -6,12 +6,6 @@
 #include <string>
 #include <variant>
 
-enum tokens : char {
-	t_print, t_run, t_rem
-};
-
-static_assert(t_rem < ' ');
-
 std::map<int, std::string> src;
 
 std::ostream* out { &std::cout };
@@ -55,33 +49,7 @@ bool matches(const std::string& kw) {
 }
 
 static inline std::string tokenize() {
-	std::string result;
-	while (cur < end) {
-		if (*cur <= ' ') {
-			result += ' '; ++cur;
-		} else if (matches("print")) {
-			result += t_print;
-		} else if (matches("rem")) {
-			result += t_rem;
-		} else if (matches("run")) {
-			result += t_run;
-		} else if (*cur == '"') {
-			result += '"';
-			++cur;
-			while (cur < end && *cur != '"') {
-				result += *cur++;
-			}
-			result += '"';
-			if (cur < end) { ++cur; }
-		} else if (isdigit(*cur) || *cur == '.') {
-			while (cur < end && (isdigit(*cur) || *cur == '.')) {
-				result += *cur++;
-			}
-		} else {
-			result += *cur++;
-		}
-	}
-	return result;
+	return std::string { cur, end };
 }
 
 using value_t = std::variant<nullptr_t, std::string, double>;
@@ -108,7 +76,7 @@ static inline std::string get_string(const value_t& v = value) {
 	return std::holds_alternative<std::string>(v) ? std::get<std::string>(v) : "";
 }
 
-static void eat_space() { while (cur < end && *cur == ' ') { ++cur; } }
+static void eat_space() { while (cur < end && *cur <= ' ') { ++cur; } }
 
 static std::string parse_array_expression(std::string name) {
 	bool first { true };
@@ -323,22 +291,27 @@ static void do_assignment(const std::string& name) {
 static void interpret() {
 	while (cur < end) {
 		switch (*cur) {
-			case t_print: ++cur; do_print(); break;
-			case t_run: ++cur; do_run(); cur = end; break;
-			case t_rem: cur = end; break;
 			case ' ': ++cur; continue;
 			case ':': break;
 			default: 
 				if (isalpha(*cur)) {
-					std::string name { parse_ident() };
-					if (cur < end && *cur == '(') {
-						do_array_assign(name);
-						break;
+					if (matches("print")) {
+						do_print(); break;
+					} else if (matches("run")) {
+						do_run(); cur = end; break;
+					} else if (matches("rem")) {
+						cur = end; break;
 					} else {
-						eat_space();
-						if (cur < end && *cur == '=') {
-							do_assignment(name);
+						std::string name { parse_ident() };
+						if (cur < end && *cur == '(') {
+							do_array_assign(name);
 							break;
+						} else {
+							eat_space();
+							if (cur < end && *cur == '=') {
+								do_assignment(name);
+								break;
+							}
 						}
 					}
 				}
@@ -384,29 +357,6 @@ void run() {
 	}
 }
 
-void test_tokenizer(const std::string& source, const std::string& expected) {
-	err = std::string { };
-	line = source; cur = line.begin(); end = line.end();
-	std::string got { tokenize() };
-	if (! err.empty()) { std::cerr << "ERR: '" << err << "'\n"; }
-	assert(err.empty());
-	assert(got == expected);
-}
-
-static inline void tokenizer_tests() {
-	test_tokenizer("", "");
-	std::string exp; exp += t_print; exp += t_print;
-	test_tokenizer("printprint", exp);
-	test_tokenizer("\"ab", "\"ab\"");
-	test_tokenizer("\"\"", "\"\"");
-	test_tokenizer("\"", "\"\"");
-	test_tokenizer(": :", ": :");
-	exp = { }; exp += t_rem; exp += " abc";
-	test_tokenizer("rem abc", exp);
-	exp = { }; exp += t_run;
-	test_tokenizer("run", exp);
-}
-
 void run_test(const std::string& source, const std::string& expected) {
 	std::ostringstream oss;
 	out = &oss;
@@ -419,7 +369,6 @@ void run_test(const std::string& source, const std::string& expected) {
 
 static inline void run_tests() {
 	is_direct_mode_tests();
-	tokenizer_tests();
 	run_test("print", "\n");
 	run_test("print \"abc\"", "abc\n");
 	run_test("print \"abc\" \"def\"", "abcdef\n");
@@ -443,7 +392,6 @@ static inline void run_tests() {
 	run_test("print a(3)", "\n");
 	run_test("a(3,2)=7:print a(3 , 2)", " 7 \n");
 	run_test("print a + b", "\n");
-std::cerr << "last test\n";
 	run_test("print a * b", " 0 \n");
 }
 
