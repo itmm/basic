@@ -84,7 +84,7 @@ static inline std::string tokenize() {
 	return result;
 }
 
-using value_t = std::variant<char, std::string, double>;
+using value_t = std::variant<nullptr_t, std::string, double>;
 
 static value_t value;
 
