@@ -25,7 +25,8 @@ std::string err;
 
 static void do_err(const char* file, int line, const std::string& msg) {
 	err = std::string { };
-	err += file; err += ":"; err += line; err += " "; err += msg;
+	err += file; err += ":"; err += std::to_string(line);
+	err += " "; err += msg;
 	cur = end;
 }
 
@@ -182,6 +183,15 @@ static inline void do_array_assign(const std::string& name) {
 	}
 }
 
+static std::string parse_ident() {
+	eat_space();
+	if (cur >= end || !isalpha(*cur)) { EXP("identifier"); return { }; }
+	std::string name;
+	while (cur < end && isalnum(*cur)) { name += *cur++; }
+	if (cur < end && *cur == '$') { name += *cur++; }
+	return name;
+}
+
 static void do_factor() {
 	eat_space();
 	if (cur >= end || *cur == ':') { ERR("no expression"); return; }
@@ -231,9 +241,7 @@ static void do_factor() {
 		}
 		default:
 			if (isalpha(*cur)) {
-				std::string name;
-				while (cur < end && isalnum(*cur)) { name += *cur++; }
-				if (cur < end && *cur == '$') { name += *cur++; }
+				std::string name { parse_ident() };
 				if (cur < end && *cur == '(') {
 					do_array_lookup(name);
 				} else { value = vars[name]; }
@@ -353,9 +361,7 @@ static void interpret() {
 			case ':': break;
 			default: 
 				if (isalpha(*cur)) {
-					std::string name;
-					while (cur < end && isalnum(*cur)) { name += *cur++; }
-					if (cur < end && *cur == '$') { name += *cur++; }
+					std::string name { parse_ident() };
 					if (cur < end && *cur == '(') {
 						do_array_assign(name);
 						break;
