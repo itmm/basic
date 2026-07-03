@@ -14,6 +14,8 @@ static_assert(t_rem < ' ');
 
 std::map<int, std::string> src;
 
+std::map<std::string, double> num_vars;
+
 std::ostream* out { &std::cout };
 std::istream* in { &std::cin };
 std::string line;
@@ -139,7 +141,13 @@ static void do_factor() {
 			}
 			break;
 		}
-		default: err = "no expression"; cur = end; return;
+		default:
+			if (isalpha(*cur)) {
+				std::string name; while (cur < end && isalnum(*cur)) { name += *cur++; }
+				value = num_vars[name];
+				break;
+			}
+			err = "no expression"; cur = end; return;
 	}
 }
 
@@ -247,6 +255,15 @@ void do_run() {
 	}
 }
 
+static void do_assignment(const std::string& name) {
+	++cur;
+	do_expression();
+	if (is_numeric()) {
+		num_vars[name] = get_numeric(); return;
+	}
+	err = "unknown assignment"; cur = end;
+}
+
 static void interpret() {
 	while (cur < end) {
 		switch (*cur) {
@@ -255,7 +272,14 @@ static void interpret() {
 			case t_rem: cur = end; break;
 			case ' ': ++cur; continue;
 			case ':': break;
-			default: err = "syntax error: " + line; cur = end;
+			default: 
+				if (isalpha(*cur)) {
+					std::string name;
+					while (cur < end && isalnum(*cur)) { name += *cur++; }
+					while (cur < end && *cur == ' ') { ++cur; }
+					if (cur < end && *cur == '=') { do_assignment(name); break; }
+				}
+				err = "syntax error: " + line; cur = end;
 		}
 		if (cur >= end) { break; }
 		if (*cur != ':') { err = "':' expected"; cur = end; break; }
@@ -350,6 +374,7 @@ static inline void run_tests() {
 	run_test("print 2 * 3 * 4", " 24 \n");
 	run_test("print -3/2", "-1.5 \n");
 	run_test("print 3 + 2 * 10", " 23 \n");
+	run_test("a = 10:print a + 5", " 15 \n");
 }
 
 int main() {
