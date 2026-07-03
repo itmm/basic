@@ -15,6 +15,7 @@ static_assert(t_rem < ' ');
 std::map<int, std::string> src;
 
 std::map<std::string, double> num_vars;
+std::map<std::string, std::string> str_vars;
 
 std::ostream* out { &std::cout };
 std::istream* in { &std::cin };
@@ -90,6 +91,14 @@ static inline double get_numeric(const value_t& v = value) {
 	return std::get<double>(v);
 }
 
+static inline bool is_string(const value_t& v = value) {
+	return std::holds_alternative<std::string>(v);
+}
+
+static inline const std::string& get_string(const value_t& v = value) {
+	return std::get<std::string>(v);
+}
+
 static void do_factor() {
 	while (cur < end && *cur == ' ') { ++cur; }
 	if (cur >= end || *cur == ':') { 
@@ -144,7 +153,13 @@ static void do_factor() {
 		default:
 			if (isalpha(*cur)) {
 				std::string name; while (cur < end && isalnum(*cur)) { name += *cur++; }
-				value = num_vars[name];
+				bool is_num { true };
+				if (cur < end && *cur == '$') { is_num = false; ++cur; }
+				if (is_num) {
+					value = num_vars[name];
+				} else {
+					value = str_vars[name];
+				}
 				break;
 			}
 			err = "no expression"; cur = end; return;
@@ -188,14 +203,6 @@ static void do_term() {
 			default: return;
 		}
 	}
-}
-
-static inline bool is_string(const value_t& v = value) {
-	return std::holds_alternative<std::string>(v);
-}
-
-static inline const std::string& get_string(const value_t& v = value) {
-	return std::get<std::string>(v);
 }
 
 static void do_expression() {
@@ -255,11 +262,13 @@ void do_run() {
 	}
 }
 
-static void do_assignment(const std::string& name) {
+static void do_assignment(const std::string& name, bool is_num) {
 	++cur;
 	do_expression();
-	if (is_numeric()) {
+	if (is_num && is_numeric()) {
 		num_vars[name] = get_numeric(); return;
+	} else if (! is_num && is_string()) {
+		str_vars[name] = get_string(); return;
 	}
 	err = "unknown assignment"; cur = end;
 }
@@ -276,8 +285,13 @@ static void interpret() {
 				if (isalpha(*cur)) {
 					std::string name;
 					while (cur < end && isalnum(*cur)) { name += *cur++; }
+					bool is_num { true };
+					if (cur < end && *cur == '$') { is_num = false; ++cur; }
 					while (cur < end && *cur == ' ') { ++cur; }
-					if (cur < end && *cur == '=') { do_assignment(name); break; }
+					if (cur < end && *cur == '=') {
+						do_assignment(name, is_num);
+						break;
+					}
 				}
 				err = "syntax error: " + line; cur = end;
 		}
@@ -375,6 +389,7 @@ static inline void run_tests() {
 	run_test("print -3/2", "-1.5 \n");
 	run_test("print 3 + 2 * 10", " 23 \n");
 	run_test("a = 10:print a + 5", " 15 \n");
+	run_test("a$ = \"abc\":print a$", "abc\n");
 }
 
 int main() {
