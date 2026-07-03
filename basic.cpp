@@ -3,6 +3,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -21,6 +22,15 @@ std::string line;
 std::string::const_iterator cur;
 std::string::const_iterator end;
 std::string err;
+
+static void do_err(const char* file, int line, const std::string& msg) {
+	err = std::string { };
+	err += file; err += ":"; err += line; err += " "; err += msg;
+	cur = end;
+}
+
+#define ERR(msg) do_err(__FILE__, __LINE__, msg)
+#define EXP(what) do_err(__FILE__, __LINE__, what " expected")
 
 static inline bool is_direct_mode() {
 	return cur >= end || !isdigit(*cur);
@@ -122,7 +132,11 @@ static inline const std::string& get_string(const value_t& v = value) {
 	return std::get<std::string>(v);
 }
 
-static std::pair<Array&, int> parse_array_expression(const std::string& name) {
+static void eat_space() { while (cur < end && *cur == ' ') { ++cur; } }
+
+static std::optional<std::pair<Array&, int>> parse_array_expression(
+	const std::string& name
+) {
 	auto got { arrays.find(name) };
 	if (got == arrays.end()) {
 		std::vector<int> dflt = { 10 };
@@ -131,52 +145,53 @@ static std::pair<Array&, int> parse_array_expression(const std::string& name) {
 	Array& ary { got->second };
 	int off = 0;
 	for (int i = 0; i < ary.size; ++i) {
-		while (cur < end && *cur == ' ') { ++cur; }
-		if (cur >= end) { err = "end of line in array expression"; cur = end; return { ary, -1 }; }
-		if (i == 0 && *cur != '(') { err = "'(' expected"; cur = end; return { ary, -1 }; }
-		if (i > 0 && *cur != ',') { err = "',' expected"; cur = end; return { ary, -1 }; }
+		eat_space();
+		if (cur >= end) { ERR("end of line in array expression"); return { }; }
+		if (i == 0 && *cur != '(') { EXP("'('"); return { }; }
+		if (i > 0 && *cur != ',') { EXP("','"); return { }; }
 		++cur;
 		do_expression();
-		if (! is_numeric()) { err = "index expected"; cur = end; return { ary, -1 }; }
+		if (! is_numeric()) { EXP("index"); return { }; }
 		int idx = (int) get_numeric();
-		if (idx < 0 || idx >= ary.dimens[i]) { err = "out of bounds"; cur = end; return { ary, -1 }; }
+		if (idx < 0 || idx >= ary.dimens[i]) {
+			ERR("out of bounds"); return { };
+		}
 		off = off * ary.dimens[i] + idx;
 	}
-	while (cur < end && *cur == ' ') { ++cur; }
-	if (cur >= end || *cur != ')') { err = "')' expected"; cur = end; return { ary, -1 }; }
+	eat_space();
+	if (cur >= end || *cur != ')') { EXP("')'"); return { }; }
 	++cur;
-	return { ary, off };
+	return std::pair<Array&, int>(ary, off);
 }
 
 static inline void do_array_lookup(const std::string& name) {
 	auto ary { parse_array_expression(name) };
-	if (ary.second >= 0) { value = ary.first.elements[ary.second]; }
+	if (ary) {
+		value = ary->first.elements[ary->second];
+	}
 }
 
 static inline void do_array_assign(const std::string& name) {
 	auto ary { parse_array_expression(name) };
-	if (ary.second < 0) { return; }
-	while (cur < end && *cur == ' ') { ++cur; }
-	if (cur == end || *cur != '=') { err = "'=' expected"; cur = end; return; }
-	++cur;
-	do_expression();
-	ary.first.elements[ary.second] = value;
+	if (ary) {
+		eat_space();
+		if (cur == end || *cur != '=') { EXP("'='"); return; }
+		++cur;
+		do_expression();
+		ary->first.elements[ary->second] = value;
+	}
 }
 
 static void do_factor() {
-	while (cur < end && *cur == ' ') { ++cur; }
-	if (cur >= end || *cur == ':') { 
-		err = "no expression"; cur = end; return;
-	}
+	eat_space();
+	if (cur >= end || *cur == ':') { ERR("no expression"); return; }
 	switch (*cur) {
 		case '-': {
 			++cur;
 			do_factor();
 			if (is_numeric()) {
 				value = - get_numeric();
-			} else {
-				err = "invalid quantity to negate"; cur = end; return;
-			}
+			} else { ERR("invalid quantity to negate"); return; }
 			break;
 		}
 		case '"': {
@@ -196,7 +211,7 @@ static void do_factor() {
 			while (cur < end && (isdigit(*cur) || *cur == '.')) {
 				v += *cur;
 				if (*cur == '.') {
-					if (contains_dot) { err = "multiple ."; cur = end; return; }
+					if (contains_dot) { ERR("multiple ."); return; }
 					contains_dot = true;
 				}
 				++cur;
@@ -210,20 +225,21 @@ static void do_factor() {
 			if (cur < end && *cur == ')') {
 				++cur;
 			} else {
-				err = "unmatched bracket"; cur = end; return;
+				ERR("unmatched parethesis"); return;
 			}
 			break;
 		}
 		default:
 			if (isalpha(*cur)) {
-				std::string name; while (cur < end && isalnum(*cur)) { name += *cur++; }
+				std::string name;
+				while (cur < end && isalnum(*cur)) { name += *cur++; }
 				if (cur < end && *cur == '$') { name += *cur++; }
 				if (cur < end && *cur == '(') {
 					do_array_lookup(name);
 				} else { value = vars[name]; }
 				break;
 			}
-			err = "no expression"; cur = end; return;
+			ERR("no expression"); return;
 	}
 }
 
@@ -233,9 +249,7 @@ static void do_binary_numeric(
 	if (! err.empty()) { return; }
 	if (is_numeric(first) && is_numeric()) {
 		value = op(get_numeric(first), get_numeric());
-	} else {
-		err = "wrong datatypes"; cur = end;
-	}
+	} else { ERR("wrong datatypes"); }
 }
 
 static void do_term() {
@@ -309,7 +323,7 @@ void do_print() {
 			double v { get_numeric() };
 			if (v >= 0) { *out << ' '; }
 			*out << v << ' ';
-		} else { err = "can't print datatype"; cur = end; return; }
+		} else { ERR("can't print datatype"); return; }
 	}
 	*out << "\n";
 }
@@ -346,17 +360,17 @@ static void interpret() {
 						do_array_assign(name);
 						break;
 					} else {
-						while (cur < end && *cur == ' ') { ++cur; }
+						eat_space();
 						if (cur < end && *cur == '=') {
 							do_assignment(name);
 							break;
 						}
 					}
 				}
-				err = "syntax error: " + line; cur = end;
+				ERR("syntax error: " + line);
 		}
 		if (cur >= end) { break; }
-		if (*cur != ':') { err = "':' expected"; cur = end; break; }
+		if (*cur != ':') { EXP("':'"); break; }
 		++cur;
 	}
 }
