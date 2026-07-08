@@ -356,7 +356,11 @@ void run() {
 				num = num * 10 + *cur++ - '0';
 			}
 			eat_space();
-			src[num] = tokenize();
+			if (cur == end) {
+				src.erase(num);
+			} else {
+				src[num] = tokenize();
+			}
 		}
 	}
 	if (err.empty()) {
@@ -403,6 +407,8 @@ static inline void run_tests() {
 	run_test("print a + b", "\n");
 	run_test("print a * b", " 0 \n");
 	run_test("5 print 4\nlist\n", "5 print 4\n");
+	run_test("run", "");
+	run_test("10 print 1\n10\nlist", "");
 }
 
 int main() {
