@@ -288,6 +288,12 @@ static void do_assignment(const std::string& name) {
 	vars[name] = value;
 }
 
+static inline void do_list() {
+	for (const auto& l : src) {
+		*out << l.first << ' ' << l.second << '\n';
+	}
+}
+
 static void interpret() {
 	while (cur < end) {
 		switch (*cur) {
@@ -301,6 +307,8 @@ static void interpret() {
 						do_run(); cur = end; break;
 					} else if (matches("rem")) {
 						cur = end; break;
+					} else if (matches("list")) {
+						do_list(); break;
 					} else {
 						std::string name { parse_ident() };
 						if (cur < end && *cur == '(') {
@@ -335,6 +343,7 @@ void run_direct(const std::string& source) {
 
 void run() {
 	vars.clear();
+	src.clear();
 	err = std::string { };
 	for (;;) {
 		if (!err.empty() || !std::getline(*in, line)) { break; }
@@ -393,6 +402,7 @@ static inline void run_tests() {
 	run_test("a(3,2)=7:print a(3 , 2)", " 7 \n");
 	run_test("print a + b", "\n");
 	run_test("print a * b", " 0 \n");
+	run_test("5 print 4\nlist\n", "5 print 4\n");
 }
 
 int main() {
