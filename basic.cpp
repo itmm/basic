@@ -294,6 +294,16 @@ static inline void do_list() {
 	}
 }
 
+static inline void do_if() {
+	do_expression();
+	bool is_true = false;
+	if (is_numeric()) {
+		is_true = get_numeric() != 0;
+	}
+	if (! matches("then")) { EXP("then"); return; }
+	if (! is_true) { cur = end; }
+}
+
 static void interpret() {
 	while (cur < end) {
 		switch (*cur) {
@@ -301,12 +311,15 @@ static void interpret() {
 			case ':': break;
 			default: 
 				if (isalpha(*cur)) {
+					if (matches("if")) {
+						do_if(); continue;
+					}
 					if (matches("print")) {
 						do_print(); break;
-					} else if (matches("run")) {
-						do_run(); cur = end; break;
 					} else if (matches("rem")) {
 						cur = end; break;
+					} else if (matches("run")) {
+						do_run(); cur = end; break;
 					} else if (matches("list")) {
 						do_list(); break;
 					} else {
@@ -382,13 +395,12 @@ void run_test(const std::string& source, const std::string& expected) {
 
 static inline void run_tests() {
 	is_direct_mode_tests();
-	run_test("print", "\n");
-	run_test("print \"abc\"", "abc\n");
-	run_test("print \"abc\" \"def\"", "abcdef\n");
-	run_test("print \"a\": print\"b\"::", "a\nb\n");
 	run_test("", "");
 	run_test(":::", "");
+	run_test("run", "");
 	run_test("rem abc", "");
+	run_test("print", "\n");
+	run_test("print \"a\": print\"bc\" \"def\"::", "a\nbcdef\n");
 	run_test("10 print \"a\"\nrun", "a\n");
 	run_test("print (\"abc\")", "abc\n");
 	run_test("print \"a\" + \"b\" + \"c\"", "abc\n");
@@ -407,8 +419,9 @@ static inline void run_tests() {
 	run_test("print a + b", "\n");
 	run_test("print a * b", " 0 \n");
 	run_test("5 print 4\nlist\n", "5 print 4\n");
-	run_test("run", "");
 	run_test("10 print 1\n10\nlist", "");
+	run_test("a = 3: if a then print \"ok\"", "ok\n");
+	run_test("a = 0: if a then print \"ok\"", "");
 }
 
 int main() {
