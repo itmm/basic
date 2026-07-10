@@ -1,4 +1,3 @@
-* goto
 * Vergleichsoperatoren
 * input
 * File-Operationen

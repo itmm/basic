@@ -275,9 +275,13 @@ void do_print() {
 
 static void interpret();
 
+static std::map<int, std::string>::const_iterator cur_line;
+
 void do_run() {
-	for (const auto& l : src) {
-		line = l.second; cur = line.begin(); end = line.end();
+	cur_line = src.begin();
+	while (cur_line != src.end()) {
+		line = cur_line->second; cur = line.begin(); end = line.end();
+		++cur_line;
 		interpret();
 	}
 }
@@ -304,6 +308,14 @@ static inline void do_if() {
 	if (! is_true) { cur = end; }
 }
 
+static inline void do_goto() {
+	do_expression();
+	if (is_numeric()) {
+		cur = end;
+		cur_line = src.find((int) get_numeric());
+	} else { EXP("line number"); }
+}
+
 static void interpret() {
 	while (cur < end) {
 		switch (*cur) {
@@ -315,6 +327,8 @@ static void interpret() {
 						do_if(); continue;
 					} else if (matches("clr")) {
 						vars.clear(); break;
+					} else if (matches("goto")) {
+						do_goto(); break;
 					} else if (matches("new")) {
 						src.clear(); break;
 					} else if (matches("print")) {
@@ -427,6 +441,7 @@ static inline void run_tests() {
 	run_test("a = 0: if a then print \"ok\"", "");
 	run_test("a = 3: clr: print a * a", " 0 \n");
 	run_test("10 print a\nnew\nlist", "");
+	run_test("10 a=3: s=0\n20 if a then s = s + a: a = a - 1: goto 20\n30 print s\nrun", " 6 \n");
 }
 
 int main() {
