@@ -8,10 +8,8 @@
 * for next
 * gosub
 * on goto/gosub
-* clr
 * def fn
 * read/data/restore
 * renumber
 * merge
 * load/save
-

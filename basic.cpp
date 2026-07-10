@@ -313,8 +313,11 @@ static void interpret() {
 				if (isalpha(*cur)) {
 					if (matches("if")) {
 						do_if(); continue;
-					}
-					if (matches("print")) {
+					} else if (matches("clr")) {
+						vars.clear(); break;
+					} else if (matches("new")) {
+						src.clear(); break;
+					} else if (matches("print")) {
 						do_print(); break;
 					} else if (matches("rem")) {
 						cur = end; break;
@@ -422,6 +425,8 @@ static inline void run_tests() {
 	run_test("10 print 1\n10\nlist", "");
 	run_test("a = 3: if a then print \"ok\"", "ok\n");
 	run_test("a = 0: if a then print \"ok\"", "");
+	run_test("a = 3: clr: print a * a", " 0 \n");
+	run_test("10 print a\nnew\nlist", "");
 }
 
 int main() {
