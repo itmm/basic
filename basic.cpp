@@ -73,7 +73,8 @@ static inline bool is_string(const value_t& v = value) {
 }
 
 static inline std::string get_string(const value_t& v = value) {
-	return std::holds_alternative<std::string>(v) ? std::get<std::string>(v) : "";
+	return std::holds_alternative<std::string>(v) ?
+		std::get<std::string>(v) : "";
 }
 
 static void eat_space() { while (cur < end && *cur <= ' ') { ++cur; } }
@@ -418,30 +419,47 @@ static inline void run_tests() {
 	run_test("rem abc", "");
 	run_test("print", "\n");
 	run_test("print \"a\": print\"bc\" \"def\"::", "a\nbcdef\n");
-	run_test("10 print \"a\"\nrun", "a\n");
 	run_test("print (\"abc\")", "abc\n");
 	run_test("print \"a\" + \"b\" + \"c\"", "abc\n");
-	run_test("print 10 20", " 10  20 \n");
 	run_test("print 10.5 20.2", " 10.5  20.2 \n");
-	run_test("print 3 + 5 + 7", " 15 \n");
+	run_test("print 3 + 5 + 7 10", " 15  10 \n");
 	run_test("print -3", "-3 \n");
-	run_test("print 4 - 10", "-6 \n");
 	run_test("print 2 * 3 * 4", " 24 \n");
 	run_test("print -3/2", "-1.5 \n");
 	run_test("print 3 + 2 * 10", " 23 \n");
-	run_test("a = 10:print a + 5", " 15 \n");
 	run_test("a$ = \"abc\":print a$", "abc\n");
 	run_test("print a(3)", "\n");
 	run_test("a(3,2)=7:print a(3 , 2)", " 7 \n");
 	run_test("print a + b", "\n");
 	run_test("print a * b", " 0 \n");
-	run_test("5 print 4\nlist\n", "5 print 4\n");
-	run_test("10 print 1\n10\nlist", "");
+	run_test(
+		"5 print 4\n"
+		"list",
+		"5 print 4\n"
+	);
+	run_test(
+		"10 print 1\n"
+		"10\n"
+		"list",
+		""
+	);
 	run_test("a = 3: if a then print \"ok\"", "ok\n");
 	run_test("a = 0: if a then print \"ok\"", "");
 	run_test("a = 3: clr: print a * a", " 0 \n");
-	run_test("10 print a\nnew\nlist", "");
-	run_test("10 a=3: s=0\n20 if a then s = s + a: a = a - 1: goto 20\n30 print s\nrun", " 6 \n");
+	run_test("10 print \"a\"\nrun", "a\n");
+	run_test(
+		"10 print a\n"
+		"new\n"
+		"list",
+		""
+	);
+	run_test(
+		"10 a=3: s=0\n"
+		"20 if a then s = s + a: a = a - 1: goto 20\n"
+		"30 print s\n"
+		"run",
+		" 6 \n"
+	);
 }
 
 int main() {
