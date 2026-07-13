@@ -1,4 +1,3 @@
-* Vergleichsoperatoren
 * input
 * File-Operationen
 * Konvertierung Zahlen <-> Strings

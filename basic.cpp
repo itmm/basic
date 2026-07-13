@@ -198,6 +198,23 @@ static void do_binary_numeric(
 	} else { ERR("wrong datatypes"); }
 }
 
+static double cast_bool(bool v) {
+	return v ? -1 : 0;
+}
+
+static void do_bool_binary(
+	const value_t& first,
+	const std::function<bool(const std::string&, const std::string&)>& str_op,
+	const std::function<bool(double, double)>& num_op
+) {
+	if (! err.empty()) { return; }
+	if (is_string(first) && is_string()) {
+		value = cast_bool(str_op(get_string(first), get_string()));
+	} else if (is_numeric(first) && is_numeric()) {
+		value = cast_bool(num_op(get_numeric(first), get_numeric()));
+	} else { ERR("wrong datatypes"); }
+}
+
 static void do_term() {
 	do_factor();
 	while (cur < end) {
@@ -226,7 +243,7 @@ static void do_term() {
 	}
 }
 
-static void do_expression() {
+static void do_simple_expression() {
 	do_term();
 	while (cur < end) {
 		switch (*cur) {
@@ -255,6 +272,75 @@ static void do_expression() {
 				break;
 			}
 			default: return;
+		}
+	}
+}
+
+static void do_expression() {
+	do_simple_expression();
+	auto first = value;
+	eat_space();
+	if (cur < end) {
+		switch (*cur) {
+			case '<': {
+				++cur;
+				if (cur < end && *cur == '>') {
+					++cur;
+					do_expression();
+					do_bool_binary(
+						first, [](const std::string& a, const std::string& b) {
+							return a != b;
+						}, [](double a, double b) { return a != b; }
+					);
+				} else if (cur < end && *cur == '=') {
+					++cur;
+					do_expression();
+					do_bool_binary(
+						first, [](const std::string& a, const std::string& b) {
+							return a <= b;
+						}, [](double a, double b) { return a <= b; }
+					);
+				} else {
+					do_expression();
+					do_bool_binary(
+						first, [](const std::string& a, const std::string& b) {
+							return a < b;
+						}, [](double a, double b) { return a < b; }
+					);
+				}
+				break;
+			}
+			case '=': {
+				++cur;
+				do_expression();
+				do_bool_binary(
+					first, [](const std::string& a, const std::string& b) {
+						return a == b;
+					}, [](double a, double b) { return a == b; }
+				);
+				break;
+			}
+			case '>': {
+				++cur;
+				if (cur < end && *cur == '=') {
+					++cur;
+					do_expression();
+					do_bool_binary(
+						first, [](const std::string& a, const std::string& b) {
+							return a >= b;
+						}, [](double a, double b) { return a >= b; }
+					);
+				} else {
+					do_expression();
+					do_bool_binary(
+						first, [](const std::string& a, const std::string& b) {
+							return a > b;
+						}, [](double a, double b) { return a > b; }
+					);
+				}
+				break;
+			}
+			default: break;
 		}
 	}
 }
@@ -460,6 +546,28 @@ static inline void run_tests() {
 		"run",
 		" 6 \n"
 	);
+	run_test("print 3 < 2", " 0 \n");
+	run_test("print 2 < 3", "-1 \n");
+	run_test("print 2 < 2", " 0 \n");
+	run_test("print 2 <= 2", "-1 \n");
+	run_test("print 2 <> 2", " 0 \n");
+	run_test("print 2 <> 3", "-1 \n");
+	run_test("print 3 > 2", "-1 \n");
+	run_test("print 2 > 3", " 0 \n");
+	run_test("print 2 >= 3", " 0 \n");
+	run_test("print 3 >= 2", "-1 \n");
+	run_test("print 3 >= 3", "-1 \n");
+	run_test("print \"abc\" < \"abb\"", " 0 \n");
+	run_test("print \"abb\" < \"abc\"", "-1 \n");
+	run_test("print \"abc\" < \"abc\"", " 0 \n");
+	run_test("print \"abc\" <= \"abc\"", "-1 \n");
+	run_test("print \"abc\" <> \"abc\"", " 0 \n");
+	run_test("print \"abb\" <> \"abc\"", "-1 \n");
+	run_test("print \"abc\" > \"abb\"", "-1 \n");
+	run_test("print \"abb\" > \"abc\"", " 0 \n");
+	run_test("print \"abb\" >= \"abc\"", " 0 \n");
+	run_test("print \"abc\" >= \"abb\"", "-1 \n");
+	run_test("print \"abc\" >= \"abc\"", "-1 \n");
 }
 
 int main() {
