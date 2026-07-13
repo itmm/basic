@@ -79,7 +79,7 @@ static inline std::string get_string(const value_t& v = value) {
 
 static void eat_space() { while (cur < end && *cur <= ' ') { ++cur; } }
 
-static std::string parse_array_expression(std::string name) {
+static inline std::string parse_array_expression(std::string name) {
 	bool first { true };
 	for (;;) {
 		eat_space();
@@ -101,30 +101,13 @@ static std::string parse_array_expression(std::string name) {
 	return name;
 }
 
-static inline void do_array_lookup(const std::string& name) {
-	auto ary { parse_array_expression(name) };
-	if (! ary.empty()) {
-		value = vars[ary];
-	}
-}
-
-static inline void do_array_assign(const std::string& name) {
-	auto ary { parse_array_expression(name) };
-	if (! ary.empty()) {
-		eat_space();
-		if (cur == end || *cur != '=') { EXP("'='"); return; }
-		++cur;
-		do_expression();
-		vars[ary] = value;
-	}
-}
-
 static std::string parse_ident() {
 	eat_space();
 	if (cur >= end || !isalpha(*cur)) { EXP("identifier"); return { }; }
 	std::string name;
 	while (cur < end && isalnum(*cur)) { name += *cur++; }
 	if (cur < end && *cur == '$') { name += *cur++; }
+	if (cur < end && *cur == '(') { name = parse_array_expression(name); }
 	return name;
 }
 
@@ -178,11 +161,7 @@ static void do_factor() {
 		default:
 			if (isalpha(*cur)) {
 				std::string name { parse_ident() };
-				if (cur < end && *cur == '(') {
-					do_array_lookup(name);
-				} else {
-					value = vars[name];
-				}
+				value = vars[name];
 				break;
 			}
 			ERR("no expression"); return;
@@ -404,10 +383,23 @@ static inline void do_goto() {
 }
 
 static inline void do_input() {
-	std::string v; char ch;
-	while (in->get(ch) && ch > ' ') { v += ch; }
-	std::string name { parse_ident() };
-	vars[name] = v;
+	char ch = ' ';
+	for (;;) {
+		while (ch > 0 && ch <= ' ' && ch != '\n') {
+			if (! in->get(ch)) { ch = 0; }
+		}
+		std::string v;
+		while (ch > ' ') {
+			v += ch;
+			if (! in->get(ch)) { ch = 0; }
+		}
+		if (ch == '\n') { ch = ' '; }
+		std::string name { parse_ident() };
+		vars[name] = v;
+		eat_space();
+		if (cur >= end || *cur != ',') { break; }
+		++cur;
+	}
 }
 
 static void interpret() {
@@ -437,15 +429,10 @@ static void interpret() {
 						do_list(); break;
 					} else {
 						std::string name { parse_ident() };
-						if (cur < end && *cur == '(') {
-							do_array_assign(name);
+						eat_space();
+						if (cur < end && *cur == '=') {
+							do_assignment(name);
 							break;
-						} else {
-							eat_space();
-							if (cur < end && *cur == '=') {
-								do_assignment(name);
-								break;
-							}
 						}
 					}
 				}
@@ -577,7 +564,8 @@ static inline void run_tests() {
 	run_test("print \"abb\" >= \"abc\"", " 0 \n");
 	run_test("print \"abc\" >= \"abb\"", "-1 \n");
 	run_test("print \"abc\" >= \"abc\"", "-1 \n");
-	run_test("10 input a$: print a$\nrun\nabc\n", "abc\n");
+	run_test("10 input a$(3): print a$(3)\nrun\nabc\n", "abc\n");
+	run_test("10 input a$, b$: print b$ a$\nrun\nabc\ndef\n", "defabc\n");
 }
 
 int main() {
