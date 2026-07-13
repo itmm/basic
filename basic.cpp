@@ -403,6 +403,13 @@ static inline void do_goto() {
 	} else { EXP("line number"); }
 }
 
+static inline void do_input() {
+	std::string v; char ch;
+	while (in->get(ch) && ch > ' ') { v += ch; }
+	std::string name { parse_ident() };
+	vars[name] = v;
+}
+
 static void interpret() {
 	while (cur < end) {
 		switch (*cur) {
@@ -416,6 +423,8 @@ static void interpret() {
 						vars.clear(); break;
 					} else if (matches("goto")) {
 						do_goto(); break;
+					} else if (matches("input")) {
+						do_input(); break;
 					} else if (matches("new")) {
 						src.clear(); break;
 					} else if (matches("print")) {
@@ -568,6 +577,7 @@ static inline void run_tests() {
 	run_test("print \"abb\" >= \"abc\"", " 0 \n");
 	run_test("print \"abc\" >= \"abb\"", "-1 \n");
 	run_test("print \"abc\" >= \"abc\"", "-1 \n");
+	run_test("10 input a$: print a$\nrun\nabc\n", "abc\n");
 }
 
 int main() {

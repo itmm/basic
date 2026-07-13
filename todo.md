@@ -1,4 +1,3 @@
-* input
 * File-Operationen
 * Konvertierung Zahlen <-> Strings
 * Trigonometrie
@@ -11,3 +10,5 @@
 * renumber
 * merge
 * load/save
+* numeric input
+* quoted input
