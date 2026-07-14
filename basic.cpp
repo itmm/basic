@@ -6,20 +6,20 @@
 #include <string>
 #include <variant>
 
-std::map<int, std::string> src;
+std::string err;
 
-std::ostream* out { &std::cout };
-std::istream* in { &std::cin };
-std::string line;
 std::string::const_iterator cur;
 std::string::const_iterator end;
-std::string err;
+
+static inline void inval_cur() {
+	cur = end = {};
+}
 
 static void do_err(const char* file, int line, const std::string& msg) {
 	err = std::string { };
 	err += file; err += ":"; err += std::to_string(line);
 	err += " "; err += msg;
-	cur = end;
+	inval_cur();
 }
 
 #define ERR(msg) do_err(__FILE__, __LINE__, msg)
@@ -30,8 +30,9 @@ static inline bool is_direct_mode() {
 }
 
 static void test_direct_mode(const std::string& source, bool expected) {
-	line = source; cur = line.begin(); end = line.end();
+	cur = source.begin(); end = source.end();
 	assert(is_direct_mode() == expected);
+	inval_cur();
 }
 
 static inline void is_direct_mode_tests() {
@@ -40,16 +41,17 @@ static inline void is_direct_mode_tests() {
 	test_direct_mode("10 print", false);
 }
 
+std::map<int, std::string> src;
+
+std::ostream* out { &std::cout };
+std::istream* in { &std::cin };
+
 bool matches(const std::string& kw) {
 	bool result {
 		end - cur >= (ssize_t) kw.size() && std::equal(kw.begin(), kw.end(), cur)
 	};
 	if (result) { cur += kw.size(); }
 	return result;
-}
-
-static inline std::string tokenize() {
-	return std::string { cur, end };
 }
 
 using value_t = std::variant<nullptr_t, std::string, double>;
@@ -346,9 +348,10 @@ static std::map<int, std::string>::const_iterator cur_line;
 void do_run() {
 	cur_line = src.begin();
 	while (cur_line != src.end()) {
-		line = cur_line->second; cur = line.begin(); end = line.end();
+		auto& line = cur_line->second; cur = line.begin(); end = line.end();
 		++cur_line;
 		interpret();
+		inval_cur();
 	}
 }
 
@@ -371,13 +374,13 @@ static inline void do_if() {
 		is_true = get_numeric() != 0;
 	}
 	if (! matches("then")) { EXP("then"); return; }
-	if (! is_true) { cur = end; }
+	if (! is_true) { inval_cur(); }
 }
 
 static inline void do_goto() {
 	do_expression();
 	if (is_numeric()) {
-		cur = end;
+		inval_cur();
 		cur_line = src.find((int) get_numeric());
 	} else { EXP("line number"); }
 }
@@ -422,9 +425,9 @@ static void interpret() {
 					} else if (matches("print")) {
 						do_print(); break;
 					} else if (matches("rem")) {
-						cur = end; break;
+						inval_cur(); break;
 					} else if (matches("run")) {
-						do_run(); cur = end; break;
+						do_run(); inval_cur(); break;
 					} else if (matches("list")) {
 						do_list(); break;
 					} else {
@@ -436,7 +439,7 @@ static void interpret() {
 						}
 					}
 				}
-				ERR("syntax error: " + line);
+				ERR("syntax error");
 		}
 		if (cur >= end) { break; }
 		if (*cur != ':') { EXP("':'"); break; }
@@ -446,18 +449,16 @@ static void interpret() {
 
 void run_direct(const std::string& source) {
 	err = std::string { };
-	line = source; cur = line.begin(); end = line.end();
-	line = tokenize();
-	if (err.empty()) {
-		cur = line.begin(); end = line.end();
-		interpret();
-	}
+	cur = source.begin(); end = source.end();
+	interpret();
+	inval_cur();
 }
 
 void run() {
 	vars.clear();
 	src.clear();
 	err = std::string { };
+	std::string line;
 	for (;;) {
 		if (!err.empty() || !std::getline(*in, line)) { break; }
 		cur = line.begin(); end = line.end();
@@ -472,9 +473,10 @@ void run() {
 			if (cur == end) {
 				src.erase(num);
 			} else {
-				src[num] = tokenize();
+				src[num] = std::string { cur, end };
 			}
 		}
+		inval_cur();
 	}
 	if (err.empty()) {
 		*out << "ready.\n";
