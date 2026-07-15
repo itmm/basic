@@ -11,28 +11,43 @@ std::string err;
 std::string::const_iterator cur;
 std::string::const_iterator end;
 
-static inline void inval_cur() {
-	cur = end = {};
-}
+class State {
+		std::string _line;
+		std::string::const_iterator _old_cur;
+		std::string::const_iterator _old_end;
+
+	public:
+		State(const std::string& line):
+			_line { line }, _old_cur { cur }, _old_end { end }
+		{
+			cur = _line.begin(); end = _line.end();
+		}
+
+		~State() { cur = _old_cur; end = _old_end; }
+		
+		static bool is_finished() { return cur >= end; }
+		static void finish_line() { cur = end; }
+		static void eat_space() { while (cur < end && *cur <= ' ') { ++cur; } }
+};
 
 static void do_err(const char* file, int line, const std::string& msg) {
 	err = std::string { };
 	err += file; err += ":"; err += std::to_string(line);
 	err += " "; err += msg;
-	inval_cur();
+	State::finish_line();
 }
 
 #define ERR(msg) do_err(__FILE__, __LINE__, msg)
 #define EXP(what) do_err(__FILE__, __LINE__, what " expected")
 
 static inline bool is_direct_mode() {
-	return cur >= end || !isdigit(*cur);
+	return State::is_finished() || !isdigit(*cur);
 }
 
 static void test_direct_mode(const std::string& source, bool expected) {
+	State state { source };
 	cur = source.begin(); end = source.end();
 	assert(is_direct_mode() == expected);
-	inval_cur();
 }
 
 static inline void is_direct_mode_tests() {
@@ -63,15 +78,23 @@ std::map<std::string, value_t> vars;
 static void do_expression();
 
 static inline bool is_numeric(const value_t& v = value) {
-	return ! std::holds_alternative<std::string>(v);
+	return std::holds_alternative<double>(v);
+}
+
+static inline bool is_string(const value_t& v = value) {
+	return std::holds_alternative<std::string>(v);
+}
+
+static inline bool can_be_numeric(const value_t& v = value) {
+	return ! is_string(v);
 }
 
 static inline double get_numeric(const value_t& v = value) {
 	return std::holds_alternative<double>(v) ? std::get<double>(v) : 0.0;
 }
 
-static inline bool is_string(const value_t& v = value) {
-	return ! std::holds_alternative<double>(v);
+static inline bool can_be_string(const value_t& v = value) {
+	return ! is_numeric(v);
 }
 
 static inline std::string get_string(const value_t& v = value) {
@@ -79,33 +102,31 @@ static inline std::string get_string(const value_t& v = value) {
 		std::get<std::string>(v) : "";
 }
 
-static void eat_space() { while (cur < end && *cur <= ' ') { ++cur; } }
-
 static inline std::string parse_array_expression(std::string name) {
 	bool first { true };
 	for (;;) {
-		eat_space();
-		if (cur >= end) { ERR("end of line in array expression"); return { }; }
+		State::eat_space();
+		if (State::is_finished()) { ERR("end of line in array expression"); return { }; }
 		if (first && *cur != '(') { EXP("'('"); return { }; }
 		if (! first && *cur != ',') { EXP("','"); return { }; }
 		++cur;
 		do_expression();
-		if (! is_numeric()) { EXP("index"); return { }; }
+		if (! can_be_numeric()) { EXP("index"); return { }; }
 		int idx = (int) get_numeric();
 		if (idx < 0) { ERR("out of bounds"); return { }; }
 		name += '_' + std::to_string(idx);
 		first = false;
-		eat_space();
-		if (cur >= end || *cur != ',') { break; }
+		State::eat_space();
+		if (State::is_finished() || *cur != ',') { break; }
 	}
-	if (cur >= end || *cur != ')') { EXP("')'"); return { }; }
+	if (State::is_finished() || *cur != ')') { EXP("')'"); return { }; }
 	++cur;
 	return name;
 }
 
 static std::string parse_ident() {
-	eat_space();
-	if (cur >= end || !isalpha(*cur)) { EXP("identifier"); return { }; }
+	State::eat_space();
+	if (State::is_finished() || !isalpha(*cur)) { EXP("identifier"); return { }; }
 	std::string name;
 	while (cur < end && isalnum(*cur)) { name += *cur++; }
 	if (cur < end && *cur == '$') { name += *cur++; }
@@ -114,13 +135,13 @@ static std::string parse_ident() {
 }
 
 static void do_factor() {
-	eat_space();
-	if (cur >= end || *cur == ':') { ERR("no expression"); return; }
+	State::eat_space();
+	if (State::is_finished() || *cur == ':') { ERR("no expression"); return; }
 	switch (*cur) {
 		case '-': {
 			++cur;
 			do_factor();
-			if (is_numeric()) {
+			if (can_be_numeric()) {
 				value = - get_numeric();
 			} else { ERR("invalid quantity to negate"); return; }
 			break;
@@ -174,7 +195,7 @@ static void do_binary_numeric(
 	const value_t& first, const std::function<double(double, double)>& op
 ) {
 	if (! err.empty()) { return; }
-	if (is_numeric(first) && is_numeric()) {
+	if (can_be_numeric(first) && can_be_numeric()) {
 		value = op(get_numeric(first), get_numeric());
 	} else { ERR("wrong datatypes"); }
 }
@@ -189,9 +210,9 @@ static void do_bool_binary(
 	const std::function<bool(double, double)>& num_op
 ) {
 	if (! err.empty()) { return; }
-	if (is_string(first) && is_string()) {
+	if (can_be_string(first) && can_be_string()) {
 		value = cast_bool(str_op(get_string(first), get_string()));
-	} else if (is_numeric(first) && is_numeric()) {
+	} else if (can_be_numeric(first) && can_be_numeric()) {
 		value = cast_bool(num_op(get_numeric(first), get_numeric()));
 	} else { ERR("wrong datatypes"); }
 }
@@ -236,7 +257,7 @@ static void do_simple_expression() {
 				switch (op) {
 					case '+':
 						if (! err.empty()) { return; }
-						if (is_string(first) && is_string()) {
+						if (can_be_string(first) && can_be_string()) {
 							value = get_string(first) + get_string();
 						} else {
 							do_binary_numeric(
@@ -260,7 +281,7 @@ static void do_simple_expression() {
 static void do_expression() {
 	do_simple_expression();
 	auto first = value;
-	eat_space();
+	State::eat_space();
 	if (cur < end) {
 		switch (*cur) {
 			case '<': {
@@ -330,9 +351,9 @@ void do_print() {
 	while (cur < end && *cur != ':') {
 		do_expression();
 		if (! err.empty()) { return; }
-		if (is_string()) {
+		if (can_be_string()) {
 			*out << get_string();
-		} else if (is_numeric()) {
+		} else if (can_be_numeric()) {
 			double v { get_numeric() };
 			if (v >= 0) { *out << ' '; }
 			*out << v << ' ';
@@ -348,10 +369,9 @@ static std::map<int, std::string>::const_iterator cur_line;
 void do_run() {
 	cur_line = src.begin();
 	while (cur_line != src.end()) {
-		auto& line = cur_line->second; cur = line.begin(); end = line.end();
+		State state { cur_line->second };
 		++cur_line;
 		interpret();
-		inval_cur();
 	}
 }
 
@@ -370,17 +390,17 @@ static inline void do_list() {
 static inline void do_if() {
 	do_expression();
 	bool is_true = false;
-	if (is_numeric()) {
+	if (can_be_numeric()) {
 		is_true = get_numeric() != 0;
 	}
 	if (! matches("then")) { EXP("then"); return; }
-	if (! is_true) { inval_cur(); }
+	if (! is_true) { State::finish_line(); }
 }
 
 static inline void do_goto() {
 	do_expression();
-	if (is_numeric()) {
-		inval_cur();
+	if (can_be_numeric()) {
+		State::finish_line();
 		cur_line = src.find((int) get_numeric());
 	} else { EXP("line number"); }
 }
@@ -398,9 +418,13 @@ static inline void do_input() {
 		}
 		if (ch == '\n') { ch = ' '; }
 		std::string name { parse_ident() };
-		vars[name] = v;
-		eat_space();
-		if (cur >= end || *cur != ',') { break; }
+		if (is_numeric(vars[name])) {
+			vars[name] = std::stod(v);
+		} else {
+			vars[name] = v;
+		}
+		State::eat_space();
+		if (State::is_finished() || *cur != ',') { break; }
 		++cur;
 	}
 }
@@ -425,14 +449,14 @@ static void interpret() {
 					} else if (matches("print")) {
 						do_print(); break;
 					} else if (matches("rem")) {
-						inval_cur(); break;
+						State::finish_line(); break;
 					} else if (matches("run")) {
-						do_run(); inval_cur(); break;
+						do_run(); State::finish_line(); break;
 					} else if (matches("list")) {
 						do_list(); break;
 					} else {
 						std::string name { parse_ident() };
-						eat_space();
+						State::eat_space();
 						if (cur < end && *cur == '=') {
 							do_assignment(name);
 							break;
@@ -441,7 +465,7 @@ static void interpret() {
 				}
 				ERR("syntax error");
 		}
-		if (cur >= end) { break; }
+		if (State::is_finished()) { break; }
 		if (*cur != ':') { EXP("':'"); break; }
 		++cur;
 	}
@@ -449,9 +473,9 @@ static void interpret() {
 
 void run_direct(const std::string& source) {
 	err = std::string { };
+	State state { source };
 	cur = source.begin(); end = source.end();
 	interpret();
-	inval_cur();
 }
 
 void run() {
@@ -461,7 +485,7 @@ void run() {
 	std::string line;
 	for (;;) {
 		if (!err.empty() || !std::getline(*in, line)) { break; }
-		cur = line.begin(); end = line.end();
+		State state { line };
 		if (is_direct_mode()) {
 			run_direct(line);
 		} else {
@@ -469,14 +493,13 @@ void run() {
 			while (cur < end && isdigit(*cur)) {
 				num = num * 10 + *cur++ - '0';
 			}
-			eat_space();
+			State::eat_space();
 			if (cur == end) {
 				src.erase(num);
 			} else {
 				src[num] = std::string { cur, end };
 			}
 		}
-		inval_cur();
 	}
 	if (err.empty()) {
 		*out << "ready.\n";
@@ -568,6 +591,7 @@ static inline void run_tests() {
 	run_test("print \"abc\" >= \"abc\"", "-1 \n");
 	run_test("10 input a$(3): print a$(3)\nrun\nabc\n", "abc\n");
 	run_test("10 input a$, b$: print b$ a$\nrun\nabc\ndef\n", "defabc\n");
+	run_test("10 a = 0: input a: print a\nrun\n123\n", " 123 \n");
 }
 
 int main() {

@@ -10,5 +10,5 @@
 * renumber
 * merge
 * load/save
-* numeric input
 * quoted input
+* print with , and ;
