@@ -359,6 +359,7 @@ static void do_expression() {
 }
 
 void do_print() {
+	bool last_was_semicolon { false };
 	while (cur < end && *cur != ':') {
 		while (cur < end && *cur == ',') { ++cur; *out << '\t'; }
 		do_expression();
@@ -370,12 +371,13 @@ void do_print() {
 			if (v >= 0) { *out << ' '; }
 			*out << v << ' ';
 		} else { ERR("can't print datatype"); return; }
-		if (cur < end && *cur == ';') { ++cur; }
+		last_was_semicolon = false;
+		if (cur < end && *cur == ';') { last_was_semicolon = true; ++cur; }
 		else if (cur < end && *cur != ',' && *cur != ':') {
 			EXP("print separator"); return;
 		}
 	}
-	*out << "\n";
+	if (! last_was_semicolon) { *out << "\n"; }
 }
 
 static void interpret();
@@ -497,7 +499,8 @@ void run_direct(const std::string& source) {
 	interpret();
 }
 
-void run() {
+void run(std::istream& is, std::ostream& os) {
+	in = &is; out = &os;
 	vars.clear();
 	src.clear();
 	err = std::string { };
@@ -529,10 +532,8 @@ void run() {
 
 void run_test(const std::string& source, const std::string& expected) {
 	std::ostringstream oss;
-	out = &oss;
 	std::istringstream iss { source };
-	in = &iss;
-	run();
+	run(iss, oss);
 	assert(err.empty());
 	// std::cerr << "{" << oss.str() << "}\n";
 	assert(oss.str() == expected + "ready.\n");
@@ -560,6 +561,7 @@ static inline void run_tests() {
 	run_test("print a + b", "\n");
 	run_test("print a * b", " 0 \n");
 	run_test("print 1, 2", " 1 \t 2 \n");
+	run_test("print 1;", " 1 ");
 	run_test(
 		"5 print 4\n"
 		"list",
@@ -617,7 +619,5 @@ static inline void run_tests() {
 
 int main() {
 	run_tests();
-	out = &std::cout;
-	in = &std::cin;
-	run();
+	run(std::cin, std::cout);
 }
