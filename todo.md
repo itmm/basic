@@ -11,4 +11,3 @@
 * merge
 * load/save
 * quoted input
-* print with , and ;

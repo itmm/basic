@@ -349,6 +349,7 @@ static void do_expression() {
 
 void do_print() {
 	while (cur < end && *cur != ':') {
+		while (cur < end && *cur == ',') { ++cur; *out << '\t'; }
 		do_expression();
 		if (! err.empty()) { return; }
 		if (can_be_string()) {
@@ -358,6 +359,10 @@ void do_print() {
 			if (v >= 0) { *out << ' '; }
 			*out << v << ' ';
 		} else { ERR("can't print datatype"); return; }
+		if (cur < end && *cur == ';') { ++cur; }
+		else if (cur < end && *cur != ',' && *cur != ':') {
+			EXP("print separator"); return;
+		}
 	}
 	*out << "\n";
 }
@@ -515,6 +520,7 @@ void run_test(const std::string& source, const std::string& expected) {
 	in = &iss;
 	run();
 	assert(err.empty());
+	// std::cerr << "{" << oss.str() << "}\n";
 	assert(oss.str() == expected + "ready.\n");
 }
 
@@ -525,11 +531,11 @@ static inline void run_tests() {
 	run_test("run", "");
 	run_test("rem abc", "");
 	run_test("print", "\n");
-	run_test("print \"a\": print\"bc\" \"def\"::", "a\nbcdef\n");
+	run_test("print \"a\": print\"bc\"; \"def\"::", "a\nbcdef\n");
 	run_test("print (\"abc\")", "abc\n");
 	run_test("print \"a\" + \"b\" + \"c\"", "abc\n");
-	run_test("print 10.5 20.2", " 10.5  20.2 \n");
-	run_test("print 3 + 5 + 7 10", " 15  10 \n");
+	run_test("print 10.5; 20.2", " 10.5  20.2 \n");
+	run_test("print 3 + 5 + 7; 10", " 15  10 \n");
 	run_test("print -3", "-3 \n");
 	run_test("print 2 * 3 * 4", " 24 \n");
 	run_test("print -3/2", "-1.5 \n");
@@ -539,6 +545,7 @@ static inline void run_tests() {
 	run_test("a(3,2)=7:print a(3 , 2)", " 7 \n");
 	run_test("print a + b", "\n");
 	run_test("print a * b", " 0 \n");
+	run_test("print 1, 2", " 1 \t 2 \n");
 	run_test(
 		"5 print 4\n"
 		"list",
@@ -590,7 +597,7 @@ static inline void run_tests() {
 	run_test("print \"abc\" >= \"abb\"", "-1 \n");
 	run_test("print \"abc\" >= \"abc\"", "-1 \n");
 	run_test("10 input a$(3): print a$(3)\nrun\nabc\n", "abc\n");
-	run_test("10 input a$, b$: print b$ a$\nrun\nabc\ndef\n", "defabc\n");
+	run_test("10 input a$, b$: print b$; a$\nrun\nabc\ndef\n", "defabc\n");
 	run_test("10 a = 0: input a: print a\nrun\n123\n", " 123 \n");
 }
 
