@@ -6,7 +6,11 @@
 #include <string>
 #include <variant>
 
+std::map<int, std::string> src;
+
 std::string err;
+
+static std::map<int, std::string>::const_iterator cur_line;
 
 std::string::const_iterator cur;
 std::string::const_iterator end;
@@ -15,15 +19,24 @@ class State {
 		std::string _line;
 		std::string::const_iterator _old_cur;
 		std::string::const_iterator _old_end;
+		std::map<int, std::string>::const_iterator _old_cur_line;
 
 	public:
+		State(const std::map<int, std::string>::const_iterator& new_line):
+			_line { new_line->second }, _old_cur { cur }, _old_end { end },
+			_old_cur_line { cur_line }
+		{
+			cur = _line.begin(); end = _line.end(); cur_line = new_line;
+		}
+
 		State(const std::string& line):
-			_line { line }, _old_cur { cur }, _old_end { end }
+			_line { line }, _old_cur { cur }, _old_end { end }, 
+			_old_cur_line { cur_line }
 		{
 			cur = _line.begin(); end = _line.end();
 		}
 
-		~State() { cur = _old_cur; end = _old_end; }
+		~State() { cur = _old_cur; end = _old_end; cur_line = _old_cur_line; }
 		
 		static bool is_finished() { return cur >= end; }
 		static void finish_line() { cur = end; }
@@ -55,8 +68,6 @@ static inline void is_direct_mode_tests() {
 	test_direct_mode("print", true);
 	test_direct_mode("10 print", false);
 }
-
-std::map<int, std::string> src;
 
 std::ostream* out { &std::cout };
 std::istream* in { &std::cin };
@@ -369,14 +380,17 @@ void do_print() {
 
 static void interpret();
 
-static std::map<int, std::string>::const_iterator cur_line;
-
 void do_run() {
 	cur_line = src.begin();
 	while (cur_line != src.end()) {
-		State state { cur_line->second };
-		++cur_line;
-		interpret();
+		std::map<int, std::string>::const_iterator next = cur_line; ++next;
+		{
+			State state { cur_line };
+			cur_line = src.end();
+			interpret();
+			if (cur_line != src.end()) { next = cur_line; }
+		}
+		cur_line = next;
 	}
 }
 
