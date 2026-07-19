@@ -3,6 +3,7 @@
 #include <iostream>
 #include <map>
 #include <sstream>
+#include <stack>
 #include <string>
 #include <variant>
 
@@ -42,6 +43,8 @@ class State {
 		static void finish_line() { cur = end; }
 		static void eat_space() { while (cur < end && *cur <= ' ') { ++cur; } }
 };
+
+std::stack<State> stack;
 
 static void do_err(const char* file, int line, const std::string& msg) {
 	err = std::string { };
@@ -426,6 +429,24 @@ static inline void do_goto() {
 	} else { EXP("line number"); }
 }
 
+static inline void do_gosub() {
+	do_expression();
+	if (can_be_numeric()) {
+		stack.emplace(src.find((int) get_numeric()));
+	} else { EXP("line number"); }
+}
+
+static inline void do_return() {
+	if (! stack.empty()) {
+		stack.pop();
+	} else { ERR("can't return"); }
+}
+
+static inline void do_end() {
+	State::finish_line();
+	cur_line = src.end();
+}
+
 static inline void do_input() {
 	char ch = ' ';
 	for (;;) {
@@ -461,6 +482,10 @@ static void interpret() {
 						do_if(); continue;
 					} else if (matches("clr")) {
 						vars.clear(); break;
+					} else if (matches("end")) {
+						do_end(); break;
+					} else if (matches("gosub")) {
+						do_gosub(); break;
 					} else if (matches("goto")) {
 						do_goto(); break;
 					} else if (matches("input")) {
@@ -471,6 +496,8 @@ static void interpret() {
 						do_print(); break;
 					} else if (matches("rem")) {
 						State::finish_line(); break;
+					} else if (matches("return")) {
+						do_return(); break;
 					} else if (matches("run")) {
 						do_run(); State::finish_line(); break;
 					} else if (matches("list")) {
@@ -535,7 +562,7 @@ void run_test(const std::string& source, const std::string& expected) {
 	std::istringstream iss { source };
 	run(iss, oss);
 	assert(err.empty());
-	// std::cerr << "{" << oss.str() << "}\n";
+	 std::cerr << "{" << oss.str() << "}\n";
 	assert(oss.str() == expected + "ready.\n");
 }
 
@@ -615,6 +642,16 @@ static inline void run_tests() {
 	run_test("10 input a$(3): print a$(3)\nrun\nabc\n", "abc\n");
 	run_test("10 input a$, b$: print b$; a$\nrun\nabc\ndef\n", "defabc\n");
 	run_test("10 a = 0: input a: print a\nrun\n123\n", " 123 \n");
+	run_test("10 end:print 42\nrun", "");
+	/*
+	run_test(
+		"10 gosub 30\n"
+		"20 end\n"
+		"30 print 11\n"
+		"40 return\n"
+		"run", " 11 \n"
+	);
+	*/
 }
 
 int main() {
