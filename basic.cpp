@@ -417,14 +417,8 @@ static void interpret();
 void do_run() {
 	cur_line = src.begin();
 	while (cur_line != src.end()) {
-		std::map<int, std::string>::const_iterator next = cur_line; ++next;
-		{
-			Stack_Guard sg { cur_line };
-			cur_line = src.end();
-			interpret();
-			if (cur_line != src.end()) { next = cur_line; }
-		}
-		cur_line = next;
+		State st { cur_line }; ++cur_line;
+		interpret();
 	}
 }
 
@@ -592,7 +586,7 @@ void run_test(const std::string& source, const std::string& expected) {
 	std::istringstream iss { source };
 	run(iss, oss);
 	assert(err.empty());
-	 std::cerr << "{" << oss.str() << "}\n";
+	// std::cerr << "{" << oss.str() << "}\n";
 	assert(oss.str() == expected + "ready.\n");
 }
 
@@ -673,13 +667,16 @@ static inline void run_tests() {
 	run_test("10 input a$, b$: print b$; a$\nrun\nabc\ndef\n", "defabc\n");
 	run_test("10 a = 0: input a: print a\nrun\n123\n", " 123 \n");
 	run_test("10 end:print 42\nrun", "");
+
 	run_test(
-		"10 gosub 30\n"
-		"20 end\n"
-		"30 print 11\n"
-		"40 return\n"
-		"run", " 11 \n"
+		"10 gosub 40\n"
+		"20 print 12\n"
+		"30 end\n"
+		"40 print 11\n"
+		"50 return\n"
+		"run", " 11 \n 12 \n"
 	);
+
 }
 
 int main() {
