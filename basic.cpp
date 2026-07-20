@@ -7,14 +7,14 @@
 #include <string>
 #include <variant>
 
-std::map<int, std::string> src;
+static std::map<int, std::string> src;
 
-std::string err;
+static std::string err;
 
 static std::map<int, std::string>::const_iterator cur_line;
 
-std::string::const_iterator cur;
-std::string::const_iterator end;
+static std::string::const_iterator cur;
+static std::string::const_iterator end;
 
 class State {
 		std::string _line;
@@ -24,10 +24,11 @@ class State {
 
 	public:
 		State(const std::map<int, std::string>::const_iterator& new_line):
-			_line { new_line->second }, _old_cur { cur },
+			_line { }, _old_cur { cur },
 			_old_end { end }, _old_cur_line { cur_line }
 		{
-			cur = _line.begin(); end = _line.end(); cur_line = new_line;
+			cur = new_line->second.begin(); end = new_line->second.end();
+			cur_line = new_line;
 		}
 
 		State(const std::string& line):
@@ -96,10 +97,10 @@ static inline void is_direct_mode_tests() {
 	test_direct_mode("10 print", false);
 }
 
-std::ostream* out { &std::cout };
-std::istream* in { &std::cin };
+static std::ostream* out { &std::cout };
+static std::istream* in { &std::cin };
 
-bool matches(const std::string& kw) {
+static bool matches(const std::string& kw) {
 	bool result {
 		end - cur >= (ssize_t) kw.size() &&
 			std::equal(kw.begin(), kw.end(), cur)
@@ -112,7 +113,7 @@ using value_t = std::variant<nullptr_t, std::string, double>;
 
 static value_t value;
 
-std::map<std::string, value_t> vars;
+static std::map<std::string, value_t> vars;
 
 static void do_expression();
 
@@ -243,9 +244,7 @@ static void do_binary_numeric(
 	} else { ERR("wrong datatypes"); }
 }
 
-static double cast_bool(bool v) {
-	return v ? -1 : 0;
-}
+static double cast_bool(bool v) { return v ? -1 : 0; }
 
 static void do_bool_binary(
 	const value_t& first,
@@ -390,7 +389,7 @@ static void do_expression() {
 	}
 }
 
-void do_print() {
+static inline void do_print() {
 	bool last_was_semicolon { false };
 	while (cur < end && *cur != ':') {
 		while (cur < end && *cur == ',') { ++cur; *out << '\t'; }
@@ -414,7 +413,7 @@ void do_print() {
 
 static void interpret();
 
-void do_run() {
+static inline void do_run() {
 	cur_line = src.begin();
 	while (cur_line != src.end()) {
 		State st { cur_line }; ++cur_line;
@@ -422,7 +421,7 @@ void do_run() {
 	}
 }
 
-static void do_assignment(const std::string& name) {
+static inline void do_assignment(const std::string& name) {
 	++cur;
 	do_expression();
 	vars[name] = value;
@@ -543,14 +542,14 @@ static void interpret() {
 	}
 }
 
-void run_direct(const std::string& source) {
+static inline void run_direct(const std::string& source) {
 	err = std::string { };
 	Stack_Guard sg { source };
 	cur = source.begin(); end = source.end();
 	interpret();
 }
 
-void run(std::istream& is, std::ostream& os) {
+static void run(std::istream& is, std::ostream& os) {
 	in = &is; out = &os;
 	vars.clear();
 	src.clear();
@@ -581,7 +580,7 @@ void run(std::istream& is, std::ostream& os) {
 	}
 }
 
-void run_test(const std::string& source, const std::string& expected) {
+static void run_test(const std::string& source, const std::string& expected) {
 	std::ostringstream oss;
 	std::istringstream iss { source };
 	run(iss, oss);
