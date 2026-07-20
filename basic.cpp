@@ -24,8 +24,8 @@ class State {
 
 	public:
 		State(const std::map<int, std::string>::const_iterator& new_line):
-			_line { new_line->second }, _old_cur { cur }, _old_end { end },
-			_old_cur_line { cur_line }
+			_line { new_line->second }, _old_cur { cur },
+			_old_end { end }, _old_cur_line { cur_line }
 		{
 			cur = _line.begin(); end = _line.end(); cur_line = new_line;
 		}
@@ -37,14 +37,14 @@ class State {
 			cur = _line.begin(); end = _line.end();
 		}
 
-		~State() { cur = _old_cur; end = _old_end; cur_line = _old_cur_line; }
-		
+		void restore() {
+			cur = _old_cur; end = _old_end; cur_line = _old_cur_line;
+		}
+
 		static bool is_finished() { return cur >= end; }
 		static void finish_line() { cur = end; }
 		static void eat_space() { while (cur < end && *cur <= ' ') { ++cur; } }
 };
-
-std::stack<State> stack;
 
 static void do_err(const char* file, int line, const std::string& msg) {
 	err = std::string { };
@@ -56,12 +56,36 @@ static void do_err(const char* file, int line, const std::string& msg) {
 #define ERR(msg) do_err(__FILE__, __LINE__, msg)
 #define EXP(what) do_err(__FILE__, __LINE__, what " expected")
 
+std::stack<State> stack;
+
+static void push_on_stack(
+	const std::map<int, std::string>::const_iterator& new_line
+) {
+	stack.emplace(new_line);
+}
+
+static void pop_from_stack() {
+	if (stack.empty()) { EXP("nonempty stack"); return; }
+	stack.top().restore();
+	stack.pop();
+}
+
+class Stack_Guard {
+		State _safed_state;
+	public:
+		Stack_Guard(
+			const std::map<int, std::string>::const_iterator& new_line
+		): _safed_state { new_line } { }
+		Stack_Guard(const std::string& line): _safed_state { line } { }
+		~Stack_Guard() { _safed_state.restore(); }
+};
+
 static inline bool is_direct_mode() {
 	return State::is_finished() || !isdigit(*cur);
 }
 
 static void test_direct_mode(const std::string& source, bool expected) {
-	State state { source };
+	Stack_Guard sg { source };
 	cur = source.begin(); end = source.end();
 	assert(is_direct_mode() == expected);
 }
@@ -77,7 +101,8 @@ std::istream* in { &std::cin };
 
 bool matches(const std::string& kw) {
 	bool result {
-		end - cur >= (ssize_t) kw.size() && std::equal(kw.begin(), kw.end(), cur)
+		end - cur >= (ssize_t) kw.size() &&
+			std::equal(kw.begin(), kw.end(), cur)
 	};
 	if (result) { cur += kw.size(); }
 	return result;
@@ -120,7 +145,9 @@ static inline std::string parse_array_expression(std::string name) {
 	bool first { true };
 	for (;;) {
 		State::eat_space();
-		if (State::is_finished()) { ERR("end of line in array expression"); return { }; }
+		if (State::is_finished()) {
+			ERR("end of line in array expression"); return { };
+		}
 		if (first && *cur != '(') { EXP("'('"); return { }; }
 		if (! first && *cur != ',') { EXP("','"); return { }; }
 		++cur;
@@ -140,7 +167,9 @@ static inline std::string parse_array_expression(std::string name) {
 
 static std::string parse_ident() {
 	State::eat_space();
-	if (State::is_finished() || !isalpha(*cur)) { EXP("identifier"); return { }; }
+	if (State::is_finished() || !isalpha(*cur)) {
+		EXP("identifier"); return { };
+	}
 	std::string name;
 	while (cur < end && isalnum(*cur)) { name += *cur++; }
 	if (cur < end && *cur == '$') { name += *cur++; }
@@ -390,7 +419,7 @@ void do_run() {
 	while (cur_line != src.end()) {
 		std::map<int, std::string>::const_iterator next = cur_line; ++next;
 		{
-			State state { cur_line };
+			Stack_Guard sg { cur_line };
 			cur_line = src.end();
 			interpret();
 			if (cur_line != src.end()) { next = cur_line; }
@@ -432,13 +461,14 @@ static inline void do_goto() {
 static inline void do_gosub() {
 	do_expression();
 	if (can_be_numeric()) {
-		stack.emplace(src.find((int) get_numeric()));
+		push_on_stack(src.find((int) get_numeric()));
+		State::finish_line();
 	} else { EXP("line number"); }
 }
 
 static inline void do_return() {
 	if (! stack.empty()) {
-		stack.pop();
+		pop_from_stack();
 	} else { ERR("can't return"); }
 }
 
@@ -521,7 +551,7 @@ static void interpret() {
 
 void run_direct(const std::string& source) {
 	err = std::string { };
-	State state { source };
+	Stack_Guard sg { source };
 	cur = source.begin(); end = source.end();
 	interpret();
 }
@@ -534,7 +564,7 @@ void run(std::istream& is, std::ostream& os) {
 	std::string line;
 	for (;;) {
 		if (!err.empty() || !std::getline(*in, line)) { break; }
-		State state { line };
+		Stack_Guard sg { line };
 		if (is_direct_mode()) {
 			run_direct(line);
 		} else {
@@ -643,7 +673,6 @@ static inline void run_tests() {
 	run_test("10 input a$, b$: print b$; a$\nrun\nabc\ndef\n", "defabc\n");
 	run_test("10 a = 0: input a: print a\nrun\n123\n", " 123 \n");
 	run_test("10 end:print 42\nrun", "");
-	/*
 	run_test(
 		"10 gosub 30\n"
 		"20 end\n"
@@ -651,7 +680,6 @@ static inline void run_tests() {
 		"40 return\n"
 		"run", " 11 \n"
 	);
-	*/
 }
 
 int main() {
