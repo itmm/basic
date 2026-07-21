@@ -271,12 +271,12 @@ static void do_term() {
 				switch (op) {
 					case '*':
 						do_binary_numeric(
-							first, [](double a, double b) { return a * b; }
+							first, [](auto a, auto b) { return a * b; }
 						);
 						break;
 					case '/':
 						do_binary_numeric(
-							first, [](double a, double b) { return a / b; }
+							first, [](auto a, auto b) { return a / b; }
 						);
 						break;
 				}
@@ -332,24 +332,21 @@ static void do_expression() {
 					++cur;
 					do_expression();
 					do_bool_binary(
-						first, [](const std::string& a, const std::string& b) {
-							return a != b;
-						}, [](double a, double b) { return a != b; }
+						first, [](const auto& a, const auto& b) { return a != b; },
+						[](auto a, auto b) { return a != b; }
 					);
 				} else if (cur < end && *cur == '=') {
 					++cur;
 					do_expression();
 					do_bool_binary(
-						first, [](const std::string& a, const std::string& b) {
-							return a <= b;
-						}, [](double a, double b) { return a <= b; }
+						first, [](const auto& a, const auto& b) { return a <= b; },
+						[](auto a, auto b) { return a <= b; }
 					);
 				} else {
 					do_expression();
 					do_bool_binary(
-						first, [](const std::string& a, const std::string& b) {
-							return a < b;
-						}, [](double a, double b) { return a < b; }
+						first, [](const auto& a, const auto& b) { return a < b; },
+						[](auto a, auto b) { return a < b; }
 					);
 				}
 				break;
@@ -358,9 +355,8 @@ static void do_expression() {
 				++cur;
 				do_expression();
 				do_bool_binary(
-					first, [](const std::string& a, const std::string& b) {
-						return a == b;
-					}, [](double a, double b) { return a == b; }
+					first, [](const auto& a, const auto& b) { return a == b; },
+					[](auto a, auto b) { return a == b; }
 				);
 				break;
 			}
@@ -370,16 +366,14 @@ static void do_expression() {
 					++cur;
 					do_expression();
 					do_bool_binary(
-						first, [](const std::string& a, const std::string& b) {
-							return a >= b;
-						}, [](double a, double b) { return a >= b; }
+						first, [](const auto& a, const auto& b) { return a >= b; },
+						[](auto a, auto b) { return a >= b; }
 					);
 				} else {
 					do_expression();
 					do_bool_binary(
-						first, [](const std::string& a, const std::string& b) {
-							return a > b;
-						}, [](double a, double b) { return a > b; }
+						first, [](const auto& a, const auto& b) { return a > b; },
+						[](double a, double b) { return a > b; }
 					);
 				}
 				break;
