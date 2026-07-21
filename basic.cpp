@@ -20,55 +20,58 @@ class State {
 		std::string::const_iterator _old_end;
 		std::map<int, std::string>::const_iterator _old_cur_line;
 
-		static std::string::const_iterator end;
+		static std::string::const_iterator _cur;
+		static std::string::const_iterator _end;
+
 	public:
-		static std::string::const_iterator cur;
 
 		State(const std::map<int, std::string>::const_iterator& new_line):
-			_line { }, _old_cur { cur },
-			_old_end { end }, _old_cur_line { cur_line }
+			_line { }, _old_cur { _cur },
+			_old_end { _end }, _old_cur_line { cur_line }
 		{
-			cur = new_line->second.begin(); end = new_line->second.end();
+			_cur = new_line->second.begin(); _end = new_line->second.end();
 			cur_line = new_line;
 		}
 
 		State(const std::string& line):
-			_line { line }, _old_cur { cur }, _old_end { end }, 
+			_line { line }, _old_cur { _cur }, _old_end { _end }, 
 			_old_cur_line { cur_line }
 		{
-			cur = _line.begin(); end = _line.end();
+			_cur = _line.begin(); _end = _line.end();
 		}
 
 		void restore() {
-			cur = _old_cur; end = _old_end; cur_line = _old_cur_line;
+			_cur = _old_cur; _end = _old_end; cur_line = _old_cur_line;
 		}
 
-		static bool is_finished() { return cur >= end; }
-		static void finish_line() { cur = end; }
+		static bool is_finished() { return _cur >= _end; }
+		static void finish_line() { _cur = _end; }
 		static void eat_space() {
-			while (! is_finished() && *cur <= ' ') { ++cur; }
+			while (! is_finished() && *_cur <= ' ') { ++_cur; }
 		}
 	
 		static bool matches(char ch) { 
-			bool got { ! is_finished() && *cur == ch };
-			if (got) { ++cur; }
+			bool got { ! is_finished() && *_cur == ch };
+			if (got) { ++_cur; }
 			return got;
 		}
 
 		static bool matches(const std::string& kw) {
 			bool got {
-				end - cur >= (ssize_t) kw.size() &&
-					std::equal(kw.begin(), kw.end(), cur)
+				_end - _cur >= (ssize_t) kw.size() &&
+					std::equal(kw.begin(), kw.end(), _cur)
 			};
-			if (got) { cur += kw.size(); }
+			if (got) { _cur += kw.size(); }
 			return got;
 		}
 
-		static std::string get_rest() { return std::string { cur, end }; }
+		static std::string get_rest() { return std::string { _cur, _end }; }
+		static char cur() { return is_finished() ? '\0' : *_cur; }
+		static void advance() { if (! is_finished()) { ++_cur; } }
 };
 
-std::string::const_iterator State::cur;
-std::string::const_iterator State::end;
+std::string::const_iterator State::_cur;
+std::string::const_iterator State::_end;
 
 static void do_err(const char* file, int line, const std::string& msg) {
 	err = std::string { };
@@ -105,7 +108,7 @@ class Stack_Guard {
 };
 
 static inline bool is_direct_mode() {
-	return State::is_finished() || !isdigit(*State::cur);
+	return State::is_finished() || !isdigit(State::cur());
 }
 
 static void test_direct_mode(const std::string& source, bool expected) {
@@ -175,11 +178,11 @@ static inline std::string parse_array_expression(std::string name) {
 
 static std::string parse_ident() {
 	State::eat_space();
-	if (State::is_finished() || !isalpha(*State::cur)) {
+	if (State::is_finished() || !isalpha(State::cur())) {
 		EXP("identifier"); return { };
 	}
 	std::string name;
-	while (! State::is_finished() && isalnum(*State::cur)) { name += *State::cur++; }
+	while (! State::is_finished() && isalnum(State::cur())) { name += State::cur(); State::advance(); }
 	if (State::matches('$')) { name += '$'; }
 	if (State::matches('(')) { name = parse_array_expression(name); }
 	return name;
@@ -187,10 +190,10 @@ static std::string parse_ident() {
 
 static void do_factor() {
 	State::eat_space();
-	if (State::is_finished() || *State::cur == ':') { ERR("no expression"); return; }
-	switch (*State::cur) {
+	if (State::is_finished() || State::cur() == ':') { ERR("no expression"); return; }
+	switch (State::cur()) {
 		case '-': {
-			++State::cur;
+			State::advance();
 			do_factor();
 			if (can_be_numeric()) {
 				value = - get_numeric();
@@ -199,11 +202,11 @@ static void do_factor() {
 		}
 		case '"': {
 			std::string v;
-			++State::cur;
-			while (! State::is_finished() && *State::cur != '"') {
-				v += *State::cur++;
+			State::advance();
+			while (! State::is_finished() && State::cur() != '"') {
+				v += State::cur(); State::advance();
 			}
-			if (! State::is_finished()) { ++State::cur; }
+			if (! State::is_finished()) { State::advance(); }
 			value = v;
 			break;
 		}
@@ -211,25 +214,25 @@ static void do_factor() {
 		case '6': case '7': case '8': case '9': case '.': {
 			std::string v;
 			bool contains_dot { false };
-			while (! State::is_finished() && (isdigit(*State::cur) || *State::cur == '.')) {
-				v += *State::cur;
-				if (*State::cur == '.') {
+			while (! State::is_finished() && (isdigit(State::cur()) || State::cur() == '.')) {
+				v += State::cur();
+				if (State::cur() == '.') {
 					if (contains_dot) { ERR("multiple ."); return; }
 					contains_dot = true;
 				}
-				++State::cur;
+				State::advance();
 			}
 			value = std::stod(v);
 			break;
 		}
 		case '(': {
-			++State::cur;
+			State::advance();
 			do_expression();
 			if (! State::matches(')')) { ERR("unmatched parethesis"); return; }
 			break;
 		}
 		default:
-			if (isalpha(*State::cur)) {
+			if (isalpha(State::cur())) {
 				std::string name { parse_ident() };
 				value = vars[name];
 				break;
@@ -265,11 +268,11 @@ static void do_bool_binary(
 static void do_term() {
 	do_factor();
 	while (! State::is_finished()) {
-		switch (*State::cur) {
-			case ' ': ++State::cur; break;
+		switch (State::cur()) {
+			case ' ': State::advance(); break;
 			case '*': case '/': {
 				value_t first = value;
-				char op { *State::cur++ };
+				char op { State::cur() }; State::advance();
 				do_factor();
 				switch (op) {
 					case '*':
@@ -293,11 +296,11 @@ static void do_term() {
 static void do_simple_expression() {
 	do_term();
 	while (! State::is_finished()) {
-		switch (*State::cur) {
-			case ' ': ++State::cur; break;
+		switch (State::cur()) {
+			case ' ': State::advance(); break;
 			case '+': case '-': {
 				value_t first = value;
-				char op = *State::cur++;
+				char op = State::cur(); State::advance();
 				do_term();
 				switch (op) {
 					case '+':
@@ -328,9 +331,9 @@ static void do_expression() {
 	auto first = value;
 	State::eat_space();
 	if (! State::is_finished()) {
-		switch (*State::cur) {
+		switch (State::cur()) {
 			case '<': {
-				++State::cur;
+				State::advance();
 				if (State::matches('>')) {
 					do_expression();
 					do_bool_binary(
@@ -353,7 +356,7 @@ static void do_expression() {
 				break;
 			}
 			case '=': {
-				++State::cur;
+				State::advance();
 				do_expression();
 				do_bool_binary(
 					first, [](const auto& a, const auto& b) { return a == b; },
@@ -362,7 +365,7 @@ static void do_expression() {
 				break;
 			}
 			case '>': {
-				++State::cur;
+				State::advance();
 				if (State::matches('=')) {
 					do_expression();
 					do_bool_binary(
@@ -385,7 +388,7 @@ static void do_expression() {
 
 static inline void do_print() {
 	bool last_was_semicolon { false };
-	while (! State::is_finished() && *State::cur != ':') {
+	while (! State::is_finished() && State::cur() != ':') {
 		while (State::matches(',')) { *out << '\t'; }
 		do_expression();
 		if (! err.empty()) { return; }
@@ -398,7 +401,7 @@ static inline void do_print() {
 		} else { ERR("can't print datatype"); return; }
 		last_was_semicolon = false;
 		if (State::matches(';')) { last_was_semicolon = true; }
-		else if (! State::is_finished() && *State::cur != ',' && *State::cur != ':') {
+		else if (! State::is_finished() && State::cur() != ',' && State::cur() != ':') {
 			EXP("print separator"); return;
 		}
 	}
@@ -488,11 +491,11 @@ static inline void do_input() {
 
 static void interpret() {
 	while (! State::is_finished()) {
-		switch (*State::cur) {
-			case ' ': ++State::cur; continue;
+		switch (State::cur()) {
+			case ' ': State::advance(); continue;
 			case ':': break;
 			default: 
-				if (isalpha(*State::cur)) {
+				if (isalpha(State::cur())) {
 					if (State::matches("if")) {
 						do_if(); continue;
 					} else if (State::matches("clr")) {
@@ -552,8 +555,8 @@ static void run(std::istream& is, std::ostream& os) {
 			run_direct(line);
 		} else {
 			int num = 0;
-			while (! State::is_finished() && isdigit(*State::cur)) {
-				num = num * 10 + *State::cur++ - '0';
+			while (! State::is_finished() && isdigit(State::cur())) {
+				num = num * 10 + State::cur() - '0'; State::advance();
 			}
 			State::eat_space();
 			if (State::is_finished()) {
