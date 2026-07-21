@@ -182,7 +182,9 @@ static std::string parse_ident() {
 		EXP("identifier"); return { };
 	}
 	std::string name;
-	while (! State::is_finished() && isalnum(State::cur())) { name += State::cur(); State::advance(); }
+	while (! State::is_finished() && isalnum(State::cur())) {
+		name += State::cur(); State::advance();
+	}
 	if (State::matches('$')) { name += '$'; }
 	if (State::matches('(')) { name = parse_array_expression(name); }
 	return name;
@@ -190,7 +192,9 @@ static std::string parse_ident() {
 
 static void do_factor() {
 	State::eat_space();
-	if (State::is_finished() || State::cur() == ':') { ERR("no expression"); return; }
+	if (State::is_finished() || State::cur() == ':') {
+		ERR("no expression"); return;
+	}
 	switch (State::cur()) {
 		case '-': {
 			State::advance();
