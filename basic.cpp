@@ -44,7 +44,15 @@ class State {
 
 		static bool is_finished() { return cur >= end; }
 		static void finish_line() { cur = end; }
-		static void eat_space() { while (cur < end && *cur <= ' ') { ++cur; } }
+		static void eat_space() {
+			while (! is_finished() && *cur <= ' ') { ++cur; }
+		}
+	
+		static bool matches(char ch) { 
+			bool got { ! is_finished() && *cur == ch };
+			if (got) { ++cur; }
+			return got;
+		}
 };
 
 static void do_err(const char* file, int line, const std::string& msg) {
@@ -149,9 +157,8 @@ static inline std::string parse_array_expression(std::string name) {
 		if (State::is_finished()) {
 			ERR("end of line in array expression"); return { };
 		}
-		if (first && *cur != '(') { EXP("'('"); return { }; }
 		if (! first && *cur != ',') { EXP("','"); return { }; }
-		++cur;
+		if (! first) { ++cur; }
 		do_expression();
 		if (! can_be_numeric()) { EXP("index"); return { }; }
 		int idx = (int) get_numeric();
@@ -172,9 +179,9 @@ static std::string parse_ident() {
 		EXP("identifier"); return { };
 	}
 	std::string name;
-	while (cur < end && isalnum(*cur)) { name += *cur++; }
-	if (cur < end && *cur == '$') { name += *cur++; }
-	if (cur < end && *cur == '(') { name = parse_array_expression(name); }
+	while (! State::is_finished() && isalnum(*cur)) { name += *cur++; }
+	if (State::matches('$')) { name += '$'; }
+	if (State::matches('(')) { name = parse_array_expression(name); }
 	return name;
 }
 
@@ -193,10 +200,10 @@ static void do_factor() {
 		case '"': {
 			std::string v;
 			++cur;
-			while (cur < end && *cur != '"') {
+			while (! State::is_finished() && *cur != '"') {
 				v += *cur++;
 			}
-			if (cur < end) { ++cur; }
+			if (! State::is_finished()) { ++cur; }
 			value = v;
 			break;
 		}
@@ -204,7 +211,7 @@ static void do_factor() {
 		case '6': case '7': case '8': case '9': case '.': {
 			std::string v;
 			bool contains_dot { false };
-			while (cur < end && (isdigit(*cur) || *cur == '.')) {
+			while (! State::is_finished() && (isdigit(*cur) || *cur == '.')) {
 				v += *cur;
 				if (*cur == '.') {
 					if (contains_dot) { ERR("multiple ."); return; }
@@ -218,11 +225,7 @@ static void do_factor() {
 		case '(': {
 			++cur;
 			do_expression();
-			if (cur < end && *cur == ')') {
-				++cur;
-			} else {
-				ERR("unmatched parethesis"); return;
-			}
+			if (! State::matches(')')) { ERR("unmatched parethesis"); return; }
 			break;
 		}
 		default:
@@ -261,7 +264,7 @@ static void do_bool_binary(
 
 static void do_term() {
 	do_factor();
-	while (cur < end) {
+	while (! State::is_finished()) {
 		switch (*cur) {
 			case ' ': ++cur; break;
 			case '*': case '/': {
@@ -289,7 +292,7 @@ static void do_term() {
 
 static void do_simple_expression() {
 	do_term();
-	while (cur < end) {
+	while (! State::is_finished()) {
 		switch (*cur) {
 			case ' ': ++cur; break;
 			case '+': case '-': {
@@ -324,19 +327,17 @@ static void do_expression() {
 	do_simple_expression();
 	auto first = value;
 	State::eat_space();
-	if (cur < end) {
+	if (! State::is_finished()) {
 		switch (*cur) {
 			case '<': {
 				++cur;
-				if (cur < end && *cur == '>') {
-					++cur;
+				if (State::matches('>')) {
 					do_expression();
 					do_bool_binary(
 						first, [](const auto& a, const auto& b) { return a != b; },
 						[](auto a, auto b) { return a != b; }
 					);
-				} else if (cur < end && *cur == '=') {
-					++cur;
+				} else if (State::matches('=')) {
 					do_expression();
 					do_bool_binary(
 						first, [](const auto& a, const auto& b) { return a <= b; },
@@ -362,8 +363,7 @@ static void do_expression() {
 			}
 			case '>': {
 				++cur;
-				if (cur < end && *cur == '=') {
-					++cur;
+				if (State::matches('=')) {
 					do_expression();
 					do_bool_binary(
 						first, [](const auto& a, const auto& b) { return a >= b; },
@@ -385,8 +385,8 @@ static void do_expression() {
 
 static inline void do_print() {
 	bool last_was_semicolon { false };
-	while (cur < end && *cur != ':') {
-		while (cur < end && *cur == ',') { ++cur; *out << '\t'; }
+	while (! State::is_finished() && *cur != ':') {
+		while (State::matches(',')) { *out << '\t'; }
 		do_expression();
 		if (! err.empty()) { return; }
 		if (can_be_string()) {
@@ -397,8 +397,8 @@ static inline void do_print() {
 			*out << v << ' ';
 		} else { ERR("can't print datatype"); return; }
 		last_was_semicolon = false;
-		if (cur < end && *cur == ';') { last_was_semicolon = true; ++cur; }
-		else if (cur < end && *cur != ',' && *cur != ':') {
+		if (State::matches(';')) { last_was_semicolon = true; }
+		else if (! State::is_finished() && *cur != ',' && *cur != ':') {
 			EXP("print separator"); return;
 		}
 	}
@@ -416,7 +416,6 @@ static inline void do_run() {
 }
 
 static inline void do_assignment(const std::string& name) {
-	++cur;
 	do_expression();
 	vars[name] = value;
 }
@@ -489,7 +488,7 @@ static inline void do_input() {
 }
 
 static void interpret() {
-	while (cur < end) {
+	while (! State::is_finished()) {
 		switch (*cur) {
 			case ' ': ++cur; continue;
 			case ':': break;
@@ -522,7 +521,7 @@ static void interpret() {
 					} else {
 						std::string name { parse_ident() };
 						State::eat_space();
-						if (cur < end && *cur == '=') {
+						if (State::matches('=')) {
 							do_assignment(name);
 							break;
 						}
@@ -556,7 +555,7 @@ static void run(std::istream& is, std::ostream& os) {
 			run_direct(line);
 		} else {
 			int num = 0;
-			while (cur < end && isdigit(*cur)) {
+			while (! State::is_finished() && isdigit(*cur)) {
 				num = num * 10 + *cur++ - '0';
 			}
 			State::eat_space();
