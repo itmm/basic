@@ -9,5 +9,4 @@
 * renumber
 * load/save
 * quoted input
-* refactor print
 

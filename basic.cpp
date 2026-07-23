@@ -393,8 +393,11 @@ static void do_expression() {
 
 static inline void do_print() {
 	bool last_was_semicolon { false };
-	while (! State::is_finished() && State::cur() != ':') {
-		while (State::matches(',')) { *out << '\t'; }
+	for (;;) {
+		State::eat_space();
+		if (State::matches(',')) { last_was_semicolon = false; *out << '\t'; continue; }
+		if (State::matches(';')) { last_was_semicolon = true; continue; }
+		if (State::is_finished() || State::cur() == ':') { break; }
 		do_expression();
 		if (! err.empty()) { return; }
 		if (can_be_string()) {
@@ -404,10 +407,12 @@ static inline void do_print() {
 			if (v >= 0) { *out << ' '; }
 			*out << v << ' ';
 		} else { ERR("can't print datatype"); return; }
+
 		last_was_semicolon = false;
-		if (State::matches(';')) { last_was_semicolon = true; }
-		else if (! State::is_finished() &&
-			State::cur() != ',' && State::cur() != ':'
+
+		State::eat_space();
+		if (! State::is_finished() &&
+			State::cur() != ',' && State::cur() != ';' && State::cur() != ':'
 		) {
 			EXP("print separator"); return;
 		}
@@ -658,6 +663,7 @@ static inline void run_tests() {
 	run_test("print a * b", " 0 \n");
 	run_test("print 1, 2", " 1 \t 2 \n");
 	run_test("print 1;", " 1 ");
+	run_test("print ;", "");
 	run_test(
 		"5 print 4\n"
 		"list",
