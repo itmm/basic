@@ -405,7 +405,9 @@ static inline void do_print() {
 		} else { ERR("can't print datatype"); return; }
 		last_was_semicolon = false;
 		if (State::matches(';')) { last_was_semicolon = true; }
-		else if (! State::is_finished() && State::cur() != ',' && State::cur() != ':') {
+		else if (! State::is_finished() &&
+			State::cur() != ',' && State::cur() != ':'
+		) {
 			EXP("print separator"); return;
 		}
 	}
@@ -493,47 +495,74 @@ static inline void do_input() {
 	}
 }
 
+static void do_ident() {
+	std::string name { parse_ident() };
+	State::eat_space();
+	if (State::matches('=')) {
+		do_assignment(name);
+	} else { ERR("unknown keyword '" + name + "'"); }
+}
+
 static void interpret() {
 	while (! State::is_finished()) {
 		switch (State::cur()) {
 			case ' ': State::advance(); continue;
 			case ':': break;
+			case 'c':
+				if (State::matches("clr")) {
+					vars.clear();
+				} else { do_ident(); }
+				break;
+			case 'e':
+				if (State::matches("end")) {
+					do_end(); 
+				} else { do_ident(); }
+				break;
+			case 'g':
+				if (State::matches("gosub")) {
+					do_gosub();
+				} else if (State::matches("goto")) {
+					do_goto();
+				} else { do_ident(); }
+				 break;
+			case 'i':
+				if (State::matches("if")) {
+					do_if(); continue;
+				} else if (State::matches("input")) {
+					do_input();
+				} else { do_ident(); }
+				break;
+			case 'l':
+				if (State::matches("list")) {
+					do_list();
+				} else { do_ident(); }
+				break;
+			case 'n':
+				if (State::matches("new")) {
+					src.clear();
+				} else { do_ident(); }
+				break;
+			case 'p':
+				if (State::matches("print")) {
+					do_print();
+				} else { do_ident(); }
+				break;
+			case 'r':
+				if (State::matches("rem")) {
+					State::finish_line();
+				} else if (State::matches("return")) {
+					do_return();
+				} else if (State::matches("run")) {
+					do_run(); State::finish_line();
+				} else { do_ident(); }
+				break;
 			default: 
 				if (isalpha(State::cur())) {
-					if (State::matches("if")) {
-						do_if(); continue;
-					} else if (State::matches("clr")) {
-						vars.clear(); break;
-					} else if (State::matches("end")) {
-						do_end(); break;
-					} else if (State::matches("gosub")) {
-						do_gosub(); break;
-					} else if (State::matches("goto")) {
-						do_goto(); break;
-					} else if (State::matches("input")) {
-						do_input(); break;
-					} else if (State::matches("new")) {
-						src.clear(); break;
-					} else if (State::matches("print")) {
-						do_print(); break;
-					} else if (State::matches("rem")) {
-						State::finish_line(); break;
-					} else if (State::matches("return")) {
-						do_return(); break;
-					} else if (State::matches("run")) {
-						do_run(); State::finish_line(); break;
-					} else if (State::matches("list")) {
-						do_list(); break;
-					} else {
-						std::string name { parse_ident() };
-						State::eat_space();
-						if (State::matches('=')) {
-							do_assignment(name);
-							break;
-						}
-					}
+					do_ident();
+				} else {
+					ERR("syntax error");
 				}
-				ERR("syntax error");
+				break;
 		}
 		if (State::is_finished()) { break; }
 		if (! State::matches(':')) { EXP("':'"); break; }
@@ -673,6 +702,14 @@ static inline void run_tests() {
 		"run", " 11 \n 12 \n"
 	);
 
+	run_test("c = 1: print c", " 1 \n");
+	run_test("e = 1: print e", " 1 \n");
+	run_test("g = 1: print g", " 1 \n");
+	run_test("i = 1: print i", " 1 \n");
+	run_test("l = 1: print l", " 1 \n");
+	run_test("n = 1: print n", " 1 \n");
+	run_test("p = 1: print p", " 1 \n");
+	run_test("r = 1: print r", " 1 \n");
 }
 
 int main() {
