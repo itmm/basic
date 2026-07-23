@@ -92,9 +92,10 @@ static void push_on_stack(
 }
 
 static void pop_from_stack() {
-	if (stack.empty()) { EXP("nonempty stack"); return; }
-	stack.top().restore();
-	stack.pop();
+	if (! stack.empty()) {
+		stack.top().restore();
+		stack.pop();
+	}
 }
 
 class Stack_Guard {
@@ -569,11 +570,7 @@ static void interpret() {
 	}
 }
 
-static inline void run_direct(const std::string& source) {
-	err = std::string { };
-	Stack_Guard sg { source };
-	interpret();
-}
+bool log_errors { true };
 
 static void run(std::istream& is, std::ostream& os) {
 	in = &is; out = &os;
@@ -585,7 +582,9 @@ static void run(std::istream& is, std::ostream& os) {
 		if (!err.empty() || !std::getline(*in, line)) { break; }
 		Stack_Guard sg { line };
 		if (is_direct_mode()) {
-			run_direct(line);
+			err = std::string { };
+			Stack_Guard sg { line };
+			interpret();
 		} else {
 			int num = 0;
 			while (! State::is_finished() && isdigit(State::cur())) {
@@ -601,8 +600,15 @@ static void run(std::istream& is, std::ostream& os) {
 	}
 	if (err.empty()) {
 		*out << "ready.\n";
-	} else {
+	} else if (log_errors) {
 		std::cerr << "?? " << err << "\n";
+	}
+}
+
+static void assert_eq(const std::string& a, const std::string& b) {
+	if (a != b) {
+		std::cerr << "\"" << a << "\" != \"" << b << "\"\n";
+		assert(false);
 	}
 }
 
@@ -610,9 +616,23 @@ static void run_test(const std::string& source, const std::string& expected) {
 	std::ostringstream oss;
 	std::istringstream iss { source };
 	run(iss, oss);
-	assert(err.empty());
-	// std::cerr << "{" << oss.str() << "}\n";
-	assert(oss.str() == expected + "ready.\n");
+	assert_eq(err, "");
+	assert_eq(oss.str(), expected + "ready.\n");
+}
+
+static void test_fail(const std::string& source, const std::string& expected) {
+	std::ostringstream oss;
+	std::istringstream iss { source };
+	bool old_log_errors { log_errors }; log_errors = false;
+	run(iss, oss);
+	log_errors = old_log_errors;
+	assert_eq(oss.str(), "");
+	auto sub_err { err.substr(err.length() - expected.length()) };
+	assert_eq(sub_err, expected);
+}
+
+static void test_exp(const std::string& source, const std::string& expected) {
+	test_fail(source, expected + " expected");
 }
 
 static inline void run_tests() {
@@ -710,6 +730,12 @@ static inline void run_tests() {
 	run_test("n = 1: print n", " 1 \n");
 	run_test("p = 1: print p", " 1 \n");
 	run_test("r = 1: print r", " 1 \n");
+	
+	test_fail("x", "unknown keyword 'x'");
+	test_fail("?", "syntax error");
+	test_exp("goto \"a\"", "line number");
+	test_fail("return", "can't return");
+	test_fail("print a(", "end of line in array expression");
 }
 
 int main() {
